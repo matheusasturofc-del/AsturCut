@@ -1,0 +1,50 @@
+# Configuração do instalador do AsturCut
+appId: com.asturcut.editor
+productName: AsturCut
+copyright: Copyright © 2026 Matheus Astur
+directories:
+  output: dist
+  buildResources: build
+files:
+  - src/**/*
+  - package.json
+  - build/icon.png
+  - "!**/*.map"
+asarUnpack:
+  - node_modules/ffmpeg-static/**
+fileAssociations:
+  - ext: astur
+    name: Projeto AsturCut
+    description: Projeto do editor AsturCut
+    icon: build/icon.ico
+    role: Editor
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: AsturCut-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: AsturCut
+  runAfterFinish: true
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  deleteAppDataOnUninstall: false
+  license: build/license.txt
+  language: "1046"
+  installerLanguages: [pt_BR]
+linux:
+  target: [AppImage]
+  icon: build/icon.png
+  category: AudioVideo
+mac:
+  target: [dmg]
+  icon: build/icon.png
+  category: public.app-category.video

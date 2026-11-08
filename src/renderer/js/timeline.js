@@ -1,0 +1,594 @@
+// Linha do tempo: trilhas, clipes, arrastar/aparar/dividir, régua, zoom e soltar da biblioteca
+import { store, bus } from './store.js';
+import { $, el, icon, fmtTime, fmtShort, clamp, dragHandler, contextMenu, promptDialog, toast } from './util.js';
+import { runtime } from './media.js';
+import { settings } from './settings.js';
+import { player, pause } from './player.js';
+import { handleDrop } from './actions.js';
+
+const HEAD_W = 112;
+const RULER_H = 28;
+let pps = 60; // pixels por segundo
+let mode = 'select';
+let root, scroller, inner, rulerCanvas, playheadEl;
+let renderQueued = false;
+let dropIndicator = null;
+
+export function initTimeline() {
+  root = $('#panel-timeline');
+  root.innerHTML = '';
+  const tb = el('div', { class: 'tl-toolbar' });
+  const btn = (ic, title, fn, id) => el('button', { class: 'icon-btn', title, id, onclick: fn, html: icon(ic) });
+  tb.append(
+    btn('cursor', 'Selecionar (V)', () => setMode('select'), 'tl-mode-select'),
+    btn('blade', 'Lâmina — clique para cortar (B)', () => setMode('blade'), 'tl-mode-blade'),
+    el('div', { class: 'tb-sep' }),
+    btn('undo', 'Desfazer (Ctrl+Z)', () => store.undo()),
+    btn('redo', 'Refazer (Ctrl+Y)', () => store.redo()),
+    el('div', { class: 'tb-sep' }),
+    btn('split', 'Dividir no cursor (Ctrl+B)', () => store.splitAt()),
+    btn('splitL', 'Excluir à esquerda (Q)', () => store.deleteLeft()),
+    btn('splitR', 'Excluir à direita (W)', () => store.deleteRight()),
+    btn('trash', 'Excluir (Delete)', () => store.deleteClips()),
+    btn('duplicate', 'Duplicar (Ctrl+D)', () => store.duplicate()),
+    btn('detach', 'Separar áudio', () => { const c = store.primarySelected(); if (c?.type === 'video') { store.detachAudio(c.id); toast('Áudio separado', 'success'); } else toast('Selecione um vídeo', 'error'); }),
+    btn('marker', 'Adicionar marcador (M)', () => store.addMarker()),
+    el('div', { class: 'grow' }),
+    el('button', { class: 'icon-btn toggle', id: 'tl-magnet', title: 'Trilha principal magnética', onclick: () => { settings.set('magnet', !settings.get('magnet')); store.applyMagnet(); bus.emit('change', 'magnet'); syncToggles(); }, html: icon('magnet') }),
+    el('button', { class: 'icon-btn toggle', id: 'tl-snap', title: 'Encaixe automático', onclick: () => { settings.set('snapping', !settings.get('snapping')); syncToggles(); }, html: icon('snap') }),
+    el('div', { class: 'tb-sep' }),
+    btn('zoomOut', 'Diminuir zoom (-)', () => zoom(1 / 1.3)),
+    el('input', { type: 'range', class: 'zoom-slider', id: 'tl-zoom', min: 0, max: 100, value: ppsToSlider(pps), oninput: (e) => setPps(sliderToPps(+e.target.value)) }),
+    btn('zoomIn', 'Aumentar zoom (+)', () => zoom(1.3)),
+    btn('fit', 'Ajustar à janela', () => fit()),
+  );
+  scroller = el('div', { class: 'tl-scroll', id: 'tl-scroll' });
+  inner = el('div', { class: 'tl-inner' });
+  scroller.append(inner);
+  root.append(tb, scroller);
+
+  scroller.addEventListener('scroll', () => drawRuler());
+  scroller.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const r = scroller.getBoundingClientRect();
+      const x = e.clientX - r.left - HEAD_W + scroller.scrollLeft;
+      const t = x / pps;
+      setPps(pps * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+      scroller.scrollLeft = t * pps - (e.clientX - r.left - HEAD_W);
+    } else if (e.shiftKey) { e.preventDefault(); scroller.scrollLeft += e.deltaY; }
+  }, { passive: false });
+  scroller.addEventListener('dragover', onDragOver);
+  scroller.addEventListener('dragleave', (e) => { if (!scroller.contains(e.relatedTarget)) clearDrop(); });
+  scroller.addEventListener('drop', onDrop);
+
+  bus.on('change', queueRender);
+  bus.on('selection', queueRender);
+  bus.on('media-analyzed', queueRender);
+  bus.on('media', queueRender);
+  bus.on('time', onTime);
+  settings.on('change', (k) => { if (['trackHeight', 'showThumbs', 'showWaves'].includes(k)) queueRender(); });
+  new ResizeObserver(() => { drawRuler(); }).observe(scroller);
+  setMode('select');
+  syncToggles();
+  render();
+}
+
+function syncToggles() {
+  $('#tl-magnet')?.classList.toggle('on', !!settings.get('magnet'));
+  $('#tl-snap')?.classList.toggle('on', !!settings.get('snapping'));
+}
+export function setMode(m) {
+  mode = m;
+  $('#tl-mode-select')?.classList.toggle('on', m === 'select');
+  $('#tl-mode-blade')?.classList.toggle('on', m === 'blade');
+  root?.classList.toggle('blade-mode', m === 'blade');
+}
+export function getMode() { return mode; }
+
+const ppsToSlider = (p) => Math.round((Math.log(p / 4) / Math.log(400 / 4)) * 100);
+const sliderToPps = (v) => 4 * Math.pow(400 / 4, v / 100);
+function setPps(p) {
+  pps = clamp(p, 2, 600);
+  const z = $('#tl-zoom'); if (z) z.value = ppsToSlider(pps);
+  render();
+}
+export function zoom(f) {
+  const center = store.time;
+  setPps(pps * f);
+  scroller.scrollLeft = center * pps - (scroller.clientWidth - HEAD_W) / 2;
+}
+export function fit() {
+  const d = Math.max(store.duration(), 5);
+  setPps((scroller.clientWidth - HEAD_W - 60) / d);
+  scroller.scrollLeft = 0;
+}
+
+function queueRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; render(); });
+}
+
+function contentWidth() {
+  return Math.max((store.duration() + 30) * pps, scroller.clientWidth - HEAD_W + 200);
+}
+
+function trackHeight(tr) {
+  const h = settings.get('trackHeight') || 54;
+  if (tr.type === 'audio') return Math.round(h * 0.8);
+  return tr.main ? h + 8 : h;
+}
+
+// ---------- Renderização ----------
+function render() {
+  if (!inner) return;
+  const W = contentWidth();
+  inner.style.width = (HEAD_W + W) + 'px';
+  inner.innerHTML = '';
+  // régua
+  const rulerRow = el('div', { class: 'tl-ruler-row', style: { height: RULER_H + 'px' } });
+  const corner = el('div', { class: 'tl-corner', style: { width: HEAD_W + 'px' } },
+    el('button', { class: 'icon-btn sm', title: 'Adicionar trilha', onclick: (e) => contextMenu(e.clientX, e.clientY, [
+      { label: 'Nova trilha de vídeo/camada', onClick: () => { store.begin(); store.addTrack('video'); store.commit('track'); } },
+      { label: 'Nova trilha de áudio', onClick: () => { store.begin(); store.addTrack('audio'); store.commit('track'); } },
+    ]), html: icon('plus', 14) }));
+  rulerCanvas = el('canvas', { class: 'tl-ruler' });
+  const rulerLane = el('div', { class: 'tl-ruler-lane', style: { width: W + 'px' } }, rulerCanvas);
+  rulerLane.addEventListener('pointerdown', (e) => {
+    pause();
+    const seek = (ev) => { const r = rulerLane.getBoundingClientRect(); store.setTime(Math.max(0, (ev.clientX - r.left) / pps)); };
+    seek(e);
+    dragHandler(e, seek, null, 'ew-resize');
+  });
+  rulerRow.append(corner, rulerLane);
+  inner.append(rulerRow);
+
+  const tracksBox = el('div', { class: 'tl-tracks' });
+  // zona para nova trilha no topo
+  tracksBox.append(el('div', { class: 'tl-newzone top', dataset: { newzone: 'top' } }, el('div', { class: 'tl-track-head ghost', style: { width: HEAD_W + 'px' } }), el('div', { class: 'tl-lane-ghost' })));
+  for (const tr of store.p.tracks) tracksBox.append(renderTrack(tr, W));
+  tracksBox.append(el('div', { class: 'tl-newzone bottom', dataset: { newzone: 'bottom' } },
+    el('div', { class: 'tl-track-head ghost', style: { width: HEAD_W + 'px' } }),
+    el('div', { class: 'tl-lane-ghost' }, store.p.clips.length ? '' : el('div', { class: 'tl-empty-hint', html: icon('video', 16) + '<span>Arraste o material aqui e comece a criar</span>' }))));
+  inner.append(tracksBox);
+
+  playheadEl = el('div', { class: 'tl-playhead' }, el('div', { class: 'tl-playhead-knob' }));
+  playheadEl.querySelector('.tl-playhead-knob').addEventListener('pointerdown', (e) => {
+    pause();
+    dragHandler(e, (ev) => { const r = inner.getBoundingClientRect(); store.setTime(Math.max(0, (ev.clientX - r.left - HEAD_W) / pps)); }, null, 'ew-resize');
+  });
+  inner.append(playheadEl);
+  if (dropIndicator) inner.append(dropIndicator);
+  positionPlayhead();
+  drawRuler();
+}
+
+function renderTrack(tr, W) {
+  const h = trackHeight(tr);
+  const row = el('div', { class: `tl-track ${tr.type}${tr.main ? ' main' : ''}${tr.locked ? ' locked' : ''}${tr.hidden || tr.muted ? ' dim' : ''}`, style: { height: h + 'px' }, dataset: { track: tr.id } });
+  const head = el('div', { class: 'tl-track-head', style: { width: HEAD_W + 'px' } },
+    el('div', { class: 'th-name', title: 'Duplo clique para renomear', ondblclick: async () => { const n = await promptDialog('Renomear trilha', tr.name); if (n) { store.begin(); tr.name = n; store.commit('rename'); } } },
+      el('span', { html: icon(tr.type === 'audio' ? 'music' : tr.main ? 'video' : 'image', 12) }), el('span', { class: 'th-label' }, tr.name)),
+    el('div', { class: 'th-btns' },
+      el('button', { class: 'icon-btn xs' + (tr.locked ? ' on' : ''), title: tr.locked ? 'Desbloquear' : 'Bloquear', onclick: () => { store.begin(); tr.locked = !tr.locked; store.commit('lock'); }, html: icon(tr.locked ? 'lock' : 'unlock', 13) }),
+      tr.type === 'video'
+        ? el('button', { class: 'icon-btn xs' + (tr.hidden ? ' on' : ''), title: tr.hidden ? 'Mostrar' : 'Ocultar', onclick: () => { store.begin(); tr.hidden = !tr.hidden; store.commit('hide'); }, html: icon(tr.hidden ? 'eyeOff' : 'eye', 13) })
+        : null,
+      el('button', { class: 'icon-btn xs' + (tr.muted ? ' on' : ''), title: tr.muted ? 'Ativar som' : 'Silenciar', onclick: () => { store.begin(); tr.muted = !tr.muted; store.commit('mute'); }, html: icon(tr.muted ? 'mute' : 'volume', 13) }),
+    ));
+  head.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    contextMenu(e.clientX, e.clientY, [
+      { label: 'Renomear', onClick: async () => { const n = await promptDialog('Renomear trilha', tr.name); if (n) { store.begin(); tr.name = n; store.commit('rename'); } } },
+      { label: 'Mover para cima', onClick: () => moveTrack(tr, -1) },
+      { label: 'Mover para baixo', onClick: () => moveTrack(tr, 1) },
+      '-',
+      { label: 'Excluir trilha', disabled: tr.main, onClick: () => { store.begin(); store.p.clips = store.p.clips.filter((c) => c.trackId !== tr.id); store.p.tracks = store.p.tracks.filter((t) => t !== tr); store.commit('deltrack'); } },
+    ]);
+  });
+  const lane = el('div', { class: 'tl-lane', style: { width: W + 'px' } });
+  lane.addEventListener('pointerdown', (e) => {
+    if (e.target !== lane || e.button !== 0) return;
+    store.clearSelection();
+    pause();
+    const r = lane.getBoundingClientRect();
+    store.setTime(Math.max(0, (e.clientX - r.left) / pps));
+  });
+  const sorted = store.clipsOn(tr.id);
+  for (const c of sorted) lane.append(renderClip(c, tr, h));
+  // botões de transição entre clipes adjacentes
+  if (tr.type === 'video') {
+    for (let i = 1; i < sorted.length; i++) {
+      const a = sorted[i - 1], b = sorted[i];
+      if (Math.abs(a.start + a.duration - b.start) > 0.05) continue;
+      if (![a, b].every((c) => ['video', 'image'].includes(c.type))) continue;
+      const has = !!b.transitionIn;
+      const j = el('div', { class: 'tl-junction' + (has ? ' has' : '') + (store.selectedTransition === b.id ? ' sel' : ''), title: has ? 'Editar transição' : 'Adicionar transição', style: { left: (b.start * pps) + 'px' }, html: icon(has ? 'transitions' : 'plus', 11) });
+      j.addEventListener('pointerdown', (e) => e.stopPropagation());
+      j.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!has) { store.updateClip(b.id, { transitionIn: { id: 'fade', dur: settings.get('transitionDuration') } }); }
+        store.selectTransition(b.id);
+        bus.emit('open-library', 'transitions');
+      });
+      lane.append(j);
+    }
+  }
+  row.append(head, lane);
+  return row;
+}
+
+function moveTrack(tr, dir) {
+  const arr = store.p.tracks;
+  const i = arr.indexOf(tr), j = i + dir;
+  if (j < 0 || j >= arr.length) return;
+  store.begin();
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  store.commit('movetrack');
+}
+
+const TYPE_LABEL = { video: 'Vídeo', image: 'Imagem', audio: 'Áudio', text: 'Texto', sticker: 'Sticker', shape: 'Forma', effect: 'Efeito', filter: 'Filtro' };
+
+function clipLabel(c) {
+  if (c.type === 'text') return c.text.content.split('\n')[0] || 'Texto';
+  if (c.type === 'sticker') return (c.sticker?.emoji || '') + ' Sticker';
+  return c.name || TYPE_LABEL[c.type];
+}
+
+function renderClip(c, tr, h) {
+  const w = Math.max(2, c.duration * pps);
+  const sel = store.selection.has(c.id);
+  const node = el('div', { class: `tl-clip ${c.type}${sel ? ' selected' : ''}`, style: { left: (c.start * pps) + 'px', width: w + 'px' }, dataset: { clip: c.id } });
+  const m = c.mediaId ? store.media(c.mediaId) : null;
+  const rt = m ? runtime.get(m.id) : null;
+  if ((c.type === 'video' || c.type === 'image') && settings.get('showThumbs')) {
+    const strip = el('div', { class: 'clip-strip' });
+    const ar = m && m.width ? m.width / m.height : 16 / 9;
+    let tileW = Math.max(30, (h - 2) * ar);
+    let n = Math.ceil(w / tileW);
+    if (n > 120) { tileW = w / 120; n = 120; }
+    const frames = rt?.frames;
+    for (let i = 0; i < n; i++) {
+      let src = rt?.thumb;
+      if (frames && frames.length && c.type === 'video') {
+        const st = (c.in || 0) + (i * tileW / pps) * (c.speed || 1);
+        let best = frames[0];
+        for (const f of frames) if (Math.abs(f.t - st) < Math.abs(best.t - st)) best = f;
+        src = best.src;
+      }
+      if (src) strip.append(el('img', { src, draggable: 'false', style: { left: (i * tileW) + 'px', width: tileW + 'px' } }));
+    }
+    node.append(strip);
+  }
+  if ((c.type === 'audio' || (c.type === 'video' && !c.audioDetached)) && settings.get('showWaves') && rt?.peaks) {
+    const cv = el('canvas', { class: 'clip-wave' + (c.type === 'video' ? ' small' : '') });
+    drawWave(cv, c, rt, Math.min(w, 6000), c.type === 'video' ? 16 : h - 18);
+    node.append(cv);
+  }
+  if (c.type === 'text' || c.type === 'sticker' || c.type === 'shape' || c.type === 'effect' || c.type === 'filter') {
+    node.append(el('div', { class: 'clip-icon', html: icon({ text: 'text', sticker: 'sticker', shape: 'star', effect: 'effects', filter: 'filters' }[c.type], 13) }));
+  }
+  const badges = [];
+  if (c.speed && c.speed !== 1) badges.push(c.speed + 'x');
+  if (c.effects?.length && c.type !== 'effect') badges.push('✦' + c.effects.length);
+  if (c.filter && c.type !== 'filter') badges.push('◐');
+  if (c.animIn || c.animOut || c.animLoop) badges.push('↻');
+  if (c.volume === 0 && hasAudio(c)) badges.push('🔇');
+  node.append(el('div', { class: 'clip-label' },
+    el('span', { class: 'clip-name' }, clipLabel(c)),
+    el('span', { class: 'clip-dur' }, fmtShort(c.duration)),
+    badges.length ? el('span', { class: 'clip-badges' }, badges.join(' ')) : null));
+  // fades de áudio
+  if (hasAudio(c) && (c.fadeIn || c.fadeOut)) {
+    if (c.fadeIn) node.append(el('div', { class: 'clip-fade in', style: { width: (c.fadeIn * pps) + 'px' } }));
+    if (c.fadeOut) node.append(el('div', { class: 'clip-fade out', style: { width: (c.fadeOut * pps) + 'px' } }));
+  }
+  const hl = el('div', { class: 'clip-handle l' });
+  const hr = el('div', { class: 'clip-handle r' });
+  node.append(hl, hr);
+  if (tr.locked) return node;
+  hl.addEventListener('pointerdown', (e) => { e.stopPropagation(); if (e.button === 0) startTrim(e, c, 'l'); });
+  hr.addEventListener('pointerdown', (e) => { e.stopPropagation(); if (e.button === 0) startTrim(e, c, 'r'); });
+  node.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    if (mode === 'blade') {
+      const r = node.getBoundingClientRect();
+      const t = c.start + (e.clientX - r.left) / pps;
+      store.splitAt(t, [c.id]);
+      return;
+    }
+    if (e.shiftKey || e.ctrlKey || e.metaKey) { store.select(c.id, true); return; }
+    if (!store.selection.has(c.id)) store.select(c.id);
+    startMove(e, c);
+  });
+  node.addEventListener('dblclick', () => { if (c.type === 'text') bus.emit('edit-text', c.id); });
+  node.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (!store.selection.has(c.id)) store.select(c.id);
+    clipMenu(e.clientX, e.clientY, c);
+  });
+  return node;
+}
+
+function hasAudio(c) { return c.type === 'audio' || c.type === 'video'; }
+
+function drawWave(cv, c, rt, w, h) {
+  cv.width = Math.max(1, Math.floor(w)); cv.height = Math.max(4, h);
+  cv.style.height = h + 'px';
+  const x = cv.getContext('2d');
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--wave').trim() || 'rgba(255,255,255,0.55)';
+  x.fillStyle = accent;
+  const peaks = rt.peaks, ps = rt.peaksPerSec;
+  const spd = c.speed || 1;
+  const vol = Math.min(1.5, c.volume ?? 1);
+  for (let i = 0; i < cv.width; i++) {
+    const t = (c.in || 0) + (i / cv.width) * c.duration * spd;
+    const v = peaks[Math.min(peaks.length - 1, Math.floor(t * ps))] || 0;
+    const bh = Math.max(1, v * h * 0.9 * vol);
+    x.fillRect(i, (h - bh) / 2, 1, bh);
+  }
+}
+
+export function clipMenu(x, y, c) {
+  const isVis = ['video', 'image', 'text', 'sticker', 'shape'].includes(c.type);
+  contextMenu(x, y, [
+    { label: 'Dividir', shortcut: 'Ctrl+B', onClick: () => store.splitAt() },
+    { label: 'Duplicar', shortcut: 'Ctrl+D', onClick: () => store.duplicate() },
+    { label: 'Copiar', shortcut: 'Ctrl+C', onClick: () => store.copy() },
+    { label: 'Colar', shortcut: 'Ctrl+V', disabled: !store.clipboard.length, onClick: () => store.paste() },
+    '-',
+    c.type === 'video' ? { label: 'Separar áudio', onClick: () => store.detachAudio(c.id) } : null,
+    isVis ? { label: 'Espelhar', onClick: () => store.updateClip(c.id, { transform: { flipH: !c.transform.flipH } }) } : null,
+    isVis ? { label: 'Girar 90°', onClick: () => store.updateClip(c.id, { transform: { rotation: (c.transform.rotation + 90) % 360 } }) } : null,
+    hasAudio(c) ? { label: c.volume === 0 ? 'Ativar som do clipe' : 'Silenciar clipe', onClick: () => store.updateClip(c.id, { volume: c.volume === 0 ? 1 : 0 }) } : null,
+    { label: 'Velocidade', submenu: [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5].map((s) => ({ label: s + 'x', checked: (c.speed || 1) === s, onClick: () => setSpeed(c, s) })) },
+    '-',
+    { label: 'Excluir', shortcut: 'Del', onClick: () => store.deleteClips() },
+  ]);
+}
+
+export function setSpeed(c, s) {
+  store.begin();
+  const srcLen = c.duration * (c.speed || 1);
+  c.speed = s;
+  c.duration = srcLen / s;
+  store.commit('speed');
+}
+
+// ---------- Encaixe ----------
+function snapPoints(exclude) {
+  const pts = [0, store.time];
+  for (const c of store.p.clips) {
+    if (exclude.includes(c.id)) continue;
+    pts.push(c.start, c.start + c.duration);
+  }
+  for (const m of store.p.markers || []) pts.push(m.time);
+  return pts;
+}
+function snap(t, pts, extra = []) {
+  if (!settings.get('snapping')) return { t, snapped: null };
+  const th = 8 / pps;
+  let best = null, bd = th;
+  for (const p of pts) {
+    for (const off of [0, ...extra]) {
+      const d = Math.abs(t + off - p);
+      if (d < bd) { bd = d; best = p - off; }
+    }
+  }
+  return best == null ? { t, snapped: null } : { t: best, snapped: best };
+}
+
+// ---------- Mover clipes ----------
+function rowAt(clientY) {
+  const rows = [...inner.querySelectorAll('.tl-track, .tl-newzone')];
+  for (const r of rows) {
+    const b = r.getBoundingClientRect();
+    if (clientY >= b.top && clientY < b.bottom) return r;
+  }
+  const first = rows[0]?.getBoundingClientRect();
+  if (first && clientY < first.top) return rows[0];
+  return rows[rows.length - 1];
+}
+
+function startMove(e, c) {
+  const moving = store.selectedClips().filter((x) => !store.track(x.trackId)?.locked);
+  const orig = moving.map((x) => ({ c: x, start: x.start, trackId: x.trackId }));
+  const pts = snapPoints(moving.map((x) => x.id));
+  const minStart = Math.min(...orig.map((o) => o.start));
+  let moved = false, targetRow = null;
+  store.begin();
+  dragHandler(e, (ev, dx, dy) => {
+    if (!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+    moved = true;
+    let dt = dx / pps;
+    dt = Math.max(dt, -minStart);
+    const primary = orig.find((o) => o.c === c);
+    const s = snap(primary.start + dt, pts, [c.duration]);
+    dt = s.t - primary.start;
+    dt = Math.max(dt, -minStart);
+    for (const o of orig) o.c.start = Math.max(0, o.start + dt);
+    showSnap(s.snapped);
+    // mudança vertical (apenas um clipe)
+    if (orig.length === 1) {
+      targetRow = rowAt(ev.clientY);
+      inner.querySelectorAll('.drop-target').forEach((n) => n.classList.remove('drop-target'));
+      if (targetRow) {
+        if (targetRow.dataset.track) {
+          const tr = store.track(targetRow.dataset.track);
+          if (tr && compatible(c, tr) && !tr.locked) c.trackId = tr.id;
+        } else targetRow.classList.add('drop-target');
+      }
+    }
+    store.touch();
+  }, (ev) => {
+    showSnap(null);
+    inner.querySelectorAll('.drop-target').forEach((n) => n.classList.remove('drop-target'));
+    if (!moved) { store._last = null; return; }
+    // soltou em zona de nova trilha
+    if (orig.length === 1 && targetRow && targetRow.dataset.newzone) {
+      const type = c.type === 'audio' ? 'audio' : 'video';
+      const idx = targetRow.dataset.newzone === 'top' ? 0 : store.p.tracks.length;
+      const tr = store.addTrack(type, type === 'audio' ? store.p.tracks.length : (idx === 0 ? 0 : indexAboveMain()));
+      c.trackId = tr.id;
+    }
+    // resolve sobreposições
+    for (const o of orig) {
+      const tr = store.track(o.c.trackId);
+      if (tr.main && settings.get('magnet')) continue;
+      if (!store.isFree(o.c.trackId, o.c.start, o.c.start + o.c.duration, moving.map((x) => x.id))) {
+        if (tr.main) {
+          // insere empurrando os clipes seguintes
+          const after = store.clipsOn(tr.id).filter((x) => !moving.includes(x) && x.start + x.duration > o.c.start);
+          const first = after[0];
+          if (first && o.c.start > first.start && o.c.start < first.start + first.duration) o.c.start = first.start + first.duration;
+          let t = o.c.start + o.c.duration;
+          for (const x of store.clipsOn(tr.id).filter((x) => !moving.includes(x) && x.start >= o.c.start - 1e-4)) { if (x.start < t) x.start = t; t = x.start + x.duration; }
+        } else {
+          const nt = store.findTrackFor(tr.type, o.c.start, o.c.start + o.c.duration);
+          o.c.trackId = nt.id;
+        }
+      }
+    }
+    store.removeEmptyTracks();
+    store.commit('move');
+  }, 'grabbing');
+}
+
+function indexAboveMain() {
+  const i = store.p.tracks.findIndex((t) => t.main);
+  return Math.max(0, i);
+}
+
+function compatible(c, tr) {
+  return c.type === 'audio' ? tr.type === 'audio' : tr.type === 'video';
+}
+
+function startTrim(e, c, side) {
+  const o = { start: c.start, duration: c.duration, in: c.in || 0 };
+  const m = c.mediaId ? store.media(c.mediaId) : null;
+  const spd = c.speed || 1;
+  const limited = m && (m.type === 'video' || m.type === 'audio') && m.duration;
+  const pts = snapPoints([c.id]);
+  const neighbors = store.clipsOn(c.trackId).filter((x) => x.id !== c.id);
+  const prevEnd = Math.max(0, ...neighbors.filter((x) => x.start + x.duration <= o.start + 1e-3).map((x) => x.start + x.duration));
+  const nextStart = Math.min(Infinity, ...neighbors.filter((x) => x.start >= o.start + o.duration - 1e-3).map((x) => x.start));
+  const magnetMain = store.track(c.trackId)?.main && settings.get('magnet');
+  store.begin();
+  dragHandler(e, (ev, dx) => {
+    let dt = dx / pps;
+    if (side === 'l') {
+      let ns = snap(o.start + dt, pts).t;
+      dt = ns - o.start;
+      if (limited) dt = Math.max(dt, -o.in / spd);
+      if (!magnetMain) dt = Math.max(dt, prevEnd - o.start);
+      dt = Math.min(dt, o.duration - 0.1);
+      dt = Math.max(dt, -o.start);
+      c.start = o.start + dt;
+      c.duration = o.duration - dt;
+      c.in = o.in + dt * spd;
+      if (magnetMain) c.start = o.start; // trilha magnética mantém posição
+      showSnap(c.start === ns ? ns : null);
+    } else {
+      let ne = snap(o.start + o.duration + dt, pts).t;
+      let nd = ne - o.start;
+      if (limited) nd = Math.min(nd, (m.duration - o.in) / spd);
+      if (!magnetMain) nd = Math.min(nd, nextStart - o.start);
+      c.duration = Math.max(0.1, nd);
+      showSnap(Math.abs(o.start + c.duration - ne) < 1e-6 ? ne : null);
+    }
+    store.touch();
+  }, () => { showSnap(null); store.commit('trim'); }, 'ew-resize');
+}
+
+let snapLine = null;
+function showSnap(t) {
+  if (t == null) { snapLine?.remove(); snapLine = null; return; }
+  if (!snapLine) snapLine = el('div', { class: 'tl-snapline' });
+  if (!snapLine.isConnected) inner.append(snapLine);
+  snapLine.style.left = (HEAD_W + t * pps) + 'px';
+}
+
+// ---------- Playhead / régua ----------
+function positionPlayhead() {
+  if (!playheadEl) return;
+  playheadEl.style.left = (HEAD_W + store.time * pps) + 'px';
+}
+function onTime() {
+  positionPlayhead();
+  if (player.playing && scroller) {
+    const x = store.time * pps;
+    const vw = scroller.clientWidth - HEAD_W;
+    if (x > scroller.scrollLeft + vw - 40 || x < scroller.scrollLeft) scroller.scrollLeft = x - 40;
+  }
+}
+
+function drawRuler() {
+  if (!rulerCanvas || !scroller) return;
+  const vw = Math.max(10, scroller.clientWidth - HEAD_W);
+  const dpr = window.devicePixelRatio || 1;
+  rulerCanvas.width = vw * dpr; rulerCanvas.height = RULER_H * dpr;
+  rulerCanvas.style.width = vw + 'px'; rulerCanvas.style.height = RULER_H + 'px';
+  rulerCanvas.style.left = scroller.scrollLeft + 'px';
+  const x = rulerCanvas.getContext('2d');
+  x.scale(dpr, dpr);
+  const cs = getComputedStyle(document.documentElement);
+  const muted = cs.getPropertyValue('--muted').trim() || '#888';
+  x.clearRect(0, 0, vw, RULER_H);
+  x.fillStyle = muted; x.strokeStyle = muted;
+  x.font = '10px ' + (cs.getPropertyValue('--ui-font') || 'sans-serif');
+  const steps = [1 / 30, 1 / 10, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+  let major = steps.find((s) => s * pps >= 70) || 600;
+  const minor = major / 5;
+  const t0 = scroller.scrollLeft / pps, t1 = t0 + vw / pps;
+  x.lineWidth = 1;
+  for (let i = Math.floor(t0 / minor); i * minor <= t1; i++) {
+    const t = Math.round(i * minor * 1000) / 1000;
+    const px = Math.round((t - t0) * pps) + 0.5;
+    const isMajor = Math.abs(t / major - Math.round(t / major)) < 1e-6;
+    x.globalAlpha = isMajor ? 0.9 : 0.4;
+    x.beginPath(); x.moveTo(px, RULER_H); x.lineTo(px, RULER_H - (isMajor ? 10 : 5)); x.stroke();
+    if (isMajor) { x.globalAlpha = 0.85; x.fillText(major < 1 ? fmtTime(t, store.p.settings.fps).slice(3) : fmtTime(t, 30, false), px + 3, 11); }
+  }
+  x.globalAlpha = 1;
+  const accent = cs.getPropertyValue('--accent').trim();
+  for (const m of store.p.markers || []) {
+    const px = (m.time - t0) * pps;
+    if (px < -6 || px > vw + 6) continue;
+    x.fillStyle = m.color || accent;
+    x.beginPath(); x.moveTo(px - 5, 14); x.lineTo(px + 5, 14); x.lineTo(px + 5, 22); x.lineTo(px, 27); x.lineTo(px - 5, 22); x.closePath(); x.fill();
+  }
+}
+
+// ---------- Soltar itens da biblioteca / arquivos ----------
+function dropInfo(e) {
+  const r = inner.getBoundingClientRect();
+  const t = Math.max(0, (e.clientX - r.left - HEAD_W) / pps);
+  const row = rowAt(e.clientY);
+  const clipEl = e.target.closest?.('.tl-clip');
+  return { t, row, trackId: row?.dataset.track || null, newzone: row?.dataset.newzone || null, clipId: clipEl?.dataset.clip || null };
+}
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  const info = dropInfo(e);
+  inner.querySelectorAll('.drop-target').forEach((n) => n.classList.remove('drop-target'));
+  if (info.clipId) inner.querySelector(`[data-clip="${info.clipId}"]`)?.classList.add('drop-target');
+  else info.row?.classList.add('drop-target');
+  if (!dropIndicator) dropIndicator = el('div', { class: 'tl-drop-ind' });
+  if (!dropIndicator.isConnected) inner.append(dropIndicator);
+  dropIndicator.style.left = (HEAD_W + info.t * pps) + 'px';
+}
+function clearDrop() {
+  inner.querySelectorAll('.drop-target').forEach((n) => n.classList.remove('drop-target'));
+  dropIndicator?.remove(); dropIndicator = null;
+}
+async function onDrop(e) {
+  e.preventDefault();
+  const info = dropInfo(e);
+  clearDrop();
+  await handleDrop(e.dataTransfer, info);
+}
+
+export function timelinePps() { return pps; }

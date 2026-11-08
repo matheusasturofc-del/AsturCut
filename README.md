@@ -1,0 +1,98 @@
+# AsturCut — Editor de vídeo para PC
+
+Editor de vídeo para Windows no estilo CapCut / Premiere, com tema escuro e destaque ciano por padrão, instalador `.exe` e tudo personalizável.
+
+![logo](build/icon.png)
+
+## Baixar o instalador
+
+O instalador do Windows é gerado automaticamente pelo GitHub Actions a cada push:
+
+1. Abra a aba **Actions** do repositório e entre na execução mais recente de **"Gerar instalador"**.
+2. Em **Artifacts**, baixe **AsturCut-Instalador-Windows** (é um `.zip` com o `AsturCut-Setup-x.y.z.exe` dentro).
+3. Execute o instalador. Você pode escolher a pasta de instalação, e ele cria atalhos na Área de Trabalho e no Menu Iniciar.
+
+> Para gerar uma **Release** com o `.exe` anexado, crie uma tag `v1.0.0` (por exemplo) e envie: `git tag v1.0.0 && git push origin v1.0.0`.
+
+Como o instalador não é assinado digitalmente, o Windows SmartScreen pode mostrar um aviso. Clique em **Mais informações → Executar assim mesmo**.
+
+## Recursos
+
+**Edição**
+- Linha do tempo com várias trilhas (vídeo/camadas e áudio), trilha principal, bloquear, ocultar e silenciar trilhas
+- Arrastar e soltar, aparar pelas bordas, dividir (Ctrl+B / S), ferramenta lâmina, excluir à esquerda e à direita (Q/W)
+- Encaixe automático (snap), trilha principal magnética, marcadores, zoom com Ctrl+roda
+- Desfazer e refazer ilimitados, copiar, colar e duplicar, separar o áudio do vídeo
+- Velocidade (0,1x a 10x), volume até 300%, fade in e fade out
+- Corte (crop), modos de ajuste (conter, preencher, esticar), 16 modos de mistura
+- Proporções 16:9, 9:16, 1:1, 4:3, 4:5, 21:9 e original, com fundo em cor ou desfocado
+
+**Biblioteca grátis**
+- **50 fontes** do Google Fonts embutidas, com favoritas. Também dá para importar suas próprias fontes `.ttf`/`.otf`
+- **46 efeitos**: VHS, glitch, aberração cromática, filme antigo, neon, duotone, chuva, neve, confete, corações, bokeh, tremor, zoom, flash e outros
+- **28 filtros** de cor (Cinema, Teal & Orange, Vintage, Noir, Cyberpunk…) com controle de intensidade
+- **27 transições** (dissolver, empurrar, cortina, círculo, relógio, zoom, girar, glitch, pixelizar…)
+- **Animações** de entrada, saída e loop (incluindo máquina de escrever para textos)
+- **24 modelos de texto** (neon, contorno, quadrinhos, gamer, cinema, legenda…) com contorno, sombra, fundo e brilho
+- **Stickers**: mais de 180 emojis e 16 formas (setas, balões, botão Inscrever-se, lower third, barra de progresso…)
+- **Áudio**: 6 músicas e 23 efeitos sonoros gerados pelo próprio app, todos livres de direitos autorais
+- **Fundos**: cores sólidas, gradientes e padrões
+- Painel **Ajuste**: brilho, contraste, exposição, saturação, temperatura, matiz, tonalidade, nitidez, desfoque e vinheta
+
+**Exibidor (prévia)**
+- Mova, redimensione e gire os clipes direto no vídeo, com guias de centro
+- Grade de composição (regra dos terços), qualidade da prévia, tela cheia
+
+**Personalização** (botão *Personalizar* ou `Ctrl+,`)
+- 10 temas prontos e cores livres para destaque, fundo, painéis, bordas e texto. Dá para exportar e importar temas
+- Fonte da interface, tamanho da interface (70% a 140%), arredondamento e espaçamento
+- Layout: arraste as bordas para redimensionar e arraste o título de um painel (⋮⋮) sobre outro para trocar de lugar. Há 7 layouts prontos (exibidor grande, timeline grande, invertido, modo foco…)
+- Preferências do editor: durações padrão, snap, magnetismo, salvamento automático
+
+**Projetos e exportação**
+- Projetos salvos em `.astur`, com lista de recentes, salvamento automático e recuperação de projeto não salvo
+- Exportação em MP4 (H.264), WebM, MOV, GIF ou somente áudio MP3. Resoluções de 480p a 4K, 24 a 60 fps
+
+## Rodar a partir do código
+
+Requisitos: [Node.js](https://nodejs.org) 20 ou mais novo.
+
+```bash
+npm install
+```
+
+```bash
+npm start
+```
+
+## Gerar o instalador no seu PC (Windows)
+
+```bash
+npm run dist
+```
+
+O instalador fica em `dist/AsturCut-Setup-<versão>.exe`.
+
+## Estrutura
+
+```
+src/main/        processo principal do Electron (janela, diálogos, protocolo de mídia, FFmpeg)
+src/renderer/    interface
+  js/store.js        estado do projeto, desfazer/refazer, operações de edição
+  js/compositor.js   motor de renderização (prévia e exportação)
+  js/timeline.js     linha do tempo
+  js/player.js       exibidor e reprodução
+  js/inspector.js    painel de propriedades
+  js/library.js      biblioteca (mídia, áudio, texto, stickers, efeitos…)
+  js/lib/            efeitos, filtros, transições, animações, stickers, textos, sons
+  js/settings.js     temas e preferências
+  js/layout.js       layout personalizável
+scripts/prepare-fonts.js  copia as fontes grátis (roda no npm install)
+electron-builder.yml      configuração do instalador (NSIS)
+```
+
+## Licenças de terceiros
+
+- Fontes: Google Fonts via Fontsource (SIL Open Font License / Apache 2.0)
+- FFmpeg via `ffmpeg-static` (LGPL/GPL)
+- Electron (MIT)
