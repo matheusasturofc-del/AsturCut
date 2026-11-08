@@ -33,6 +33,14 @@ Em poucos minutos sai a **Release** `v1.3.0` com o instalador `.exe`, e todos qu
 
 ## Recursos
 
+**Novidades da 1.3**
+- **Legendas automáticas**: o AsturCut ouve a fala e cria as legendas sozinho (Whisper rodando no seu PC, nada vai para a internet). Estilos Clássica, Destaque (karaokê), Pop, Com fundo, Neon e Simples. O modelo de IA é baixado só na primeira vez.
+- **Remover fundo**: recorte de pessoa com IA (sem tela verde) e chroma key para tela verde/azul, com conta-gotas, suavidade e remoção de reflexo
+- **Exportação rápida**: áudio mixado na hora e vídeo codificado pela placa de vídeo (até ~2,5x mais rápido que o tempo real) + predefinições (YouTube 1080p/4K, Reels/TikTok/Shorts, Instagram, WhatsApp, GIF, MP3) e predefinições salvas por você
+- **Gravar tela e webcam** com microfone (narração) e som do computador; barra flutuante com Pausar/Parar (Ctrl+Shift+F9); os arquivos vão para Documentos\AsturCut\Gravações e entram direto na linha do tempo
+- **Tirar silêncios** automaticamente, com prévia da forma de onda, limiar, silêncio mínimo e margem
+- Tela de abertura "AsturCut preparando..." enquanto o editor carrega
+
 **Tela inicial**
 - Botão "Criar projeto" em destaque, com atalhos de proporção (YouTube, Reels/TikTok, Instagram, Feed)
 - Começar rápido: abrir projeto, importar mídia, intro animada, slideshow de fotos
@@ -122,6 +130,7 @@ src/renderer/    interface
   js/settings.js     temas e preferências
   js/layout.js       layout personalizável
 scripts/prepare-fonts.js  copia as fontes grátis (roda no npm install)
+scripts/prepare-vendor.js copia as bibliotecas de IA local (Transformers.js/ONNX e MediaPipe) para src/renderer/vendor
 electron-builder.yml      configuração do instalador (NSIS)
 ```
 
@@ -130,3 +139,5 @@ electron-builder.yml      configuração do instalador (NSIS)
 - Fontes: Google Fonts via Fontsource (SIL Open Font License / Apache 2.0)
 - FFmpeg via `ffmpeg-static` (LGPL/GPL)
 - Electron (MIT)
+- Transformers.js e ONNX Runtime Web (Apache 2.0 / MIT); modelos Whisper (MIT) baixados do Hugging Face na primeira vez
+- MediaPipe Tasks Vision e o modelo Selfie Segmenter (Apache 2.0)
