@@ -7,6 +7,8 @@ const { Readable } = require('stream');
 const { spawn } = require('child_process');
 
 const isDev = process.argv.includes('--dev');
+// IA local (legendas): permite várias threads no WebAssembly
+app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer');
 let win = null;
 let pendingOpenFile = null;
 let lang = 'pt';

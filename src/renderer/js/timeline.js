@@ -7,6 +7,7 @@ import { player, pause } from './player.js';
 import { handleDrop } from './actions.js';
 import { keyTimes } from './keyframes.js';
 import { removeSilencesDialog } from './silence.js';
+import { openCaptionsDialog } from './captions.js';
 import { labelMenu, speedDialog, gainDialog, copyAttributes, pasteAttributesDialog, hasAttributes } from './editTools.js';
 import { openMixer } from './audiomix.js';
 import { openSource } from './source.js';
@@ -42,6 +43,7 @@ export function initTimeline() {
     btn('marker', 'Adicionar marcador (M)', () => store.addMarker()),
     el('div', { class: 'tb-sep' }),
     btn('silence', 'Tirar silêncios automaticamente', () => removeSilencesDialog()),
+    btn('captions', 'Legendas automáticas', () => openCaptionsDialog()),
     el('div', { class: 'grow' }),
     btn('mixer', 'Mixer de áudio (efeitos por trilha)', () => openMixer()),
     el('div', { class: 'tb-sep' }),

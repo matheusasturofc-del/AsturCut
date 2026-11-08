@@ -2,7 +2,7 @@
 import { store } from './store.js';
 import { t } from './i18n.js';
 import { el, icon, modal, toast, fmtTime, fmtBytes, promptDialog } from './util.js';
-import { fastSupported, fastExport } from './fastExport.js';
+import { fastSupported, fastExport, clearDecoded } from './fastExport.js';
 import { renderFrame } from './compositor.js';
 import { player, pause, syncMedia, draw } from './player.js';
 import { allPlayers, exportAudioStream, audioCtx, isDesktop, api } from './media.js';
@@ -192,6 +192,7 @@ async function startExport(o) {
       toast(t('O modo rápido falhou neste computador — exportando em tempo real.'), 'info');
       setP(0, t('Preparando...'));
     } finally {
+      clearDecoded();
       store.time = prevTime;
       draw();
     }

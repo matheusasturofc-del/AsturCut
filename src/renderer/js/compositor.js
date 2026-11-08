@@ -137,7 +137,7 @@ function measureText(ctx, tx, S, anim) {
   return { size, lh, w, h: lh * all.length, lines, allCount: all.length };
 }
 
-function drawText(ctx, tx, S, anim) {
+export function drawText(ctx, tx, S, anim, lt = 0) {
   const m = measureText(ctx, tx, S, anim);
   const { size, lh, w, h, lines } = m;
   ctx.textBaseline = 'middle';
@@ -176,11 +176,49 @@ function drawText(ctx, tx, S, anim) {
   }
   ctx.fillStyle = tx.color;
   each((l, x, y) => ctx.fillText(l, x, y));
+  if (tx.karaoke && tx.karaoke.words?.length) drawKaraoke(ctx, tx, lines, x0, y0, lh, lt);
   if (tx.underline) {
     ctx.shadowColor = 'transparent';
     ctx.fillRect(-w / 2, h / 2 - size * 0.05, w, Math.max(2, size * 0.06));
   }
   return { w: w + (tx.bg ? tx.bgPadding * S * 2 : 0), h: h + (tx.bg ? tx.bgPadding * S * 1.2 : 0) };
+}
+
+// legenda estilo karaokê: pinta a palavra que está sendo falada
+function drawKaraoke(ctx, tx, lines, x0, y0, lh, lt) {
+  const K = tx.karaoke;
+  let k = -1;
+  for (let i = 0; i < K.words.length; i++) { if (K.words[i][0] <= lt + 1e-3) k = i; else break; }
+  if (k < 0) return;
+  // se o texto foi editado e o número de palavras mudou, distribui proporcionalmente
+  const total = lines.join(' ').split(/\s+/).filter(Boolean).length;
+  if (total !== K.words.length) k = Math.min(total - 1, Math.floor(((k + 0.5) / K.words.length) * total));
+  ctx.save();
+  ctx.shadowColor = 'transparent';
+  ctx.textAlign = 'left';
+  let idx = 0;
+  lines.forEach((line, li) => {
+    const parts = line.split(/(\s+)/);
+    const lw = ctx.measureText(line).width;
+    let x = tx.align === 'left' ? x0 : tx.align === 'right' ? x0 - lw : x0 - lw / 2;
+    for (const p of parts) {
+      const w = ctx.measureText(p).width;
+      if (p && !/^\s+$/.test(p)) {
+        if (K.mode === 'fill' ? idx <= k : idx === k) {
+          if (K.box) {
+            const pad = lh * 0.08;
+            ctx.fillStyle = K.color;
+            ctx.beginPath(); ctx.roundRect(x - pad * 1.5, y0 + li * lh - lh * 0.46, w + pad * 3, lh * 0.92, lh * 0.16); ctx.fill();
+            ctx.fillStyle = K.ink || '#000000';
+          } else ctx.fillStyle = K.color;
+          ctx.fillText(p, x, y0 + li * lh);
+        }
+        idx++;
+      }
+      x += w;
+    }
+  });
+  ctx.restore();
 }
 
 // tamanho "natural" do conteúdo de um clipe em px do canvas (antes da escala do usuário)
@@ -261,7 +299,7 @@ function renderClip(idx, clip, t, W, H, S, hits) {
       } else ctx.drawImage(src, -size.w / 2, -size.h / 2, size.w, size.h);
     }
   } else if (clip.type === 'text') {
-    drawText(ctx, clip.text, S, anim);
+    drawText(ctx, clip.text, S, anim, ltc);
   } else if (clip.type === 'sticker') {
     const s = 220 * S;
     ctx.font = `${s * 0.86}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;

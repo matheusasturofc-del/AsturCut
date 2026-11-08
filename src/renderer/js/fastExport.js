@@ -16,6 +16,9 @@ export function fastSupported() {
   return typeof VideoEncoder !== 'undefined' && !!(api && api.fxBegin);
 }
 
+// libera a memória dos áudios decodificados
+export function clearDecoded() { decoded.clear(); }
+
 export async function decodeMedia(m) {
   if (decoded.has(m.id)) return decoded.get(m.id);
   let buf = null;
@@ -35,7 +38,7 @@ function makeBus(ctx, tr, gateOk) {
   const low = ctx.createBiquadFilter(); low.type = 'lowshelf'; low.frequency.value = 150; low.gain.value = a.eq.on ? a.eq.low : 0;
   const mid = ctx.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = clamp(a.eq.midF, 80, 12000); mid.gain.value = a.eq.on ? a.eq.mid : 0;
   const high = ctx.createBiquadFilter(); high.type = 'highshelf'; high.frequency.value = 6000; high.gain.value = a.eq.on ? a.eq.high : 0;
-  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = a.eq.on ? clamp(a.eq.lp, 1000, 22000) : 22000;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = Math.min(ctx.sampleRate / 2, a.eq.on ? clamp(a.eq.lp, 1000, 22000) : 22000);
   const comp = ctx.createDynamicsCompressor(); comp.threshold.value = a.comp.on ? a.comp.threshold : 0; comp.ratio.value = a.comp.on ? a.comp.ratio : 1;
   const lim = ctx.createDynamicsCompressor(); lim.threshold.value = a.limiter.on ? a.limiter.ceiling : 0; lim.ratio.value = a.limiter.on ? 20 : 1; lim.knee.value = 0; lim.attack.value = 0.002; lim.release.value = 0.08;
   const pan = ctx.createStereoPanner(); pan.pan.value = a.pan;
@@ -54,9 +57,9 @@ function makeBus(ctx, tr, gateOk) {
 }
 
 // mixa todo o áudio do intervalo [start, start+dur]
-export async function renderAudioOffline(start, dur, onProgress) {
-  const len = Math.max(1, Math.ceil(dur * SR));
-  const ctx = new OfflineAudioContext(2, len, SR);
+export async function renderAudioOffline(start, dur, onProgress, { sampleRate = SR, channels = 2, filter = null } = {}) {
+  const len = Math.max(1, Math.ceil(dur * sampleRate));
+  const ctx = new OfflineAudioContext(channels, len, sampleRate);
   let gateOk = false;
   try { await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([GATE_CODE], { type: 'application/javascript' }))); gateOk = true; } catch {}
   const master = ctx.createGain();
@@ -64,7 +67,7 @@ export async function renderAudioOffline(start, dur, onProgress) {
   master.connect(ctx.destination);
   const anySolo = store.p.tracks.some((t) => t.solo);
   const buses = new Map();
-  const clips = store.p.clips.filter((c) => (c.type === 'audio' || c.type === 'video') && c.start < start + dur && c.start + c.duration > start);
+  const clips = store.p.clips.filter((c) => (c.type === 'audio' || c.type === 'video') && c.start < start + dur && c.start + c.duration > start && (!filter || filter(c)));
   let i = 0;
   for (const c of clips) {
     i++;

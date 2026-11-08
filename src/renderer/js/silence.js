@@ -2,7 +2,7 @@
 import { store, bus } from './store.js';
 import { el, modal, toast, clamp, uid, deepClone, fmtTime } from './util.js';
 import { t } from './i18n.js';
-import { decodeMedia } from './fastExport.js';
+import { decodeMedia, clearDecoded } from './fastExport.js';
 
 const WIN = 0.02; // janela de análise: 20 ms
 const hasAudio = (c) => c.type === 'audio' || c.type === 'video';
@@ -140,6 +140,7 @@ export async function removeSilencesDialog(clips = store.selectedClips()) {
   const loading = toast(t('Analisando o áudio...'), 'info', 60000);
   const envs = [];
   for (const g of groups) envs.push({ g, db: await envelope(g.src) });
+  clearDecoded();
   loading?.remove?.();
   const ok = envs.filter((e) => e.db);
   if (!ok.length) { toast(t('Não foi possível ler o áudio deste clipe'), 'error'); return; }

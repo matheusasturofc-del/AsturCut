@@ -12,3 +12,4 @@ video/audio/
 video/node_modules/
 video/*.onnx*
 video/mix.wav
+src/renderer/vendor/

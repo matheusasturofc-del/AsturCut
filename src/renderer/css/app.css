@@ -699,3 +699,15 @@ body.picking #preview-canvas { outline: 2px dashed var(--accent); }
 .exp-sub { font-weight: 600; margin-bottom: -4px; }
 .exp-presets { margin: 0 0 4px; }
 .exp-warn { color: #f5b04c; }
+
+/* ---------- Legendas automáticas ---------- */
+.cap-dlg { display: flex; flex-direction: column; gap: 12px; }
+.cap-intro { display: flex; gap: 10px; align-items: flex-start; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.cap-intro span:first-child { color: var(--accent); margin-top: 1px; }
+.cap-prev { width: 100%; height: auto; aspect-ratio: 560 / 200; border-radius: 10px; border: 1px solid var(--border); display: block; }
+.cap-styles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.cap-style { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 4px; font-size: 12px; font-weight: 600; color: var(--text); }
+.cap-style:hover { border-color: var(--muted); }
+.cap-style.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; color: var(--accent); }
+.cap-grid { display: flex; flex-direction: column; gap: 8px; }
+.cap-live { min-height: 36px; font-size: 12px; color: var(--text); opacity: .8; font-style: italic; }
