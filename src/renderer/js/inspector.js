@@ -1,7 +1,7 @@
 // Painel de propriedades (Detalhes / Vídeo / Texto / Áudio / Velocidade / Animação / Ajuste / Efeitos)
 import { store, bus, ASPECTS, defaultAdjust } from './store.js';
 import { t } from './i18n.js';
-import { $, el, icon, fmtTime, fmtShort, clamp } from './util.js';
+import { $, el, icon, fmtTime, fmtShort, clamp, promptDialog } from './util.js';
 import { settings } from './settings.js';
 import { FONTS } from './library.js';
 import { customFonts, isDesktop, api } from './media.js';
@@ -12,6 +12,10 @@ import { ANIM_IN, ANIM_LOOP } from './lib/animations.js';
 import { setSpeed } from './timeline.js';
 import { setAspect } from './player.js';
 import { openTab } from './library.js';
+import { player, startPick } from './player.js';
+import { hasKf, anyKf, valueAt, setValue, toggleAnim, toggleKey, keyAtCursor, jumpKey, localTime, EASINGS, setEaseAtCursor, easeAtCursor } from './keyframes.js';
+import { colorBypass } from './compositor.js';
+import { whiteBalanceFrom, applyColorToMedia, copyAttributes, pasteAttributesDialog, hasAttributes, gainDialog, speedDialog, toDb } from './editTools.js';
 
 let panel, bodyEl;
 const lastTab = {};
@@ -23,6 +27,14 @@ export function initInspector() {
   panel.append(bodyEl);
   bus.on('selection', render);
   bus.on('change', (label) => { if (label !== 'touch') render(); });
+  // com keyframes, os valores mudam com o tempo: atualiza ao mover o cursor (pausado)
+  let tTimer = null;
+  bus.on('time', () => {
+    if (player.playing) return;
+    const c = store.primarySelected();
+    if (!c || !anyKf(c)) return;
+    clearTimeout(tTimer); tTimer = setTimeout(render, 60);
+  });
   bus.on('project', render);
   bus.on('edit-text', () => { lastTab.text = 'text'; render(); setTimeout(() => { const ta = panel.querySelector('textarea'); ta?.focus(); ta?.select(); }, 30); });
   render();
@@ -47,6 +59,34 @@ function slider(label, value, { min = 0, max = 100, step = 1, unit = '', onInput
   const reset = def != null ? el('button', { class: 'icon-btn xs', title: 'Redefinir', onclick: () => { store.begin(); range.value = def; num.value = def; paint(); onInput(def); store.commit('reset'); }, html: icon('undo', 12) }) : null;
   void show;
   return row(label, range, num, reset);
+}
+
+// controle com keyframes: ⏱ liga a animação; ‹ ◆ › navega/adiciona/remove keyframes no cursor
+function animSlider(c, prop, label, { mul = 1, ...opts }) {
+  const v = valueAt(c, prop, localTime(c)) * mul;
+  const r = slider(label, Math.round(v * 100) / 100, { ...opts, def: opts.def, onInput: (x) => { setValue(c, prop, x / mul); store.touch(); } });
+  const on = hasKf(c, prop);
+  const ctrl = r.querySelector('.prop-ctrl');
+  const kfBox = el('div', { class: 'kf-ctrl' },
+    el('button', { class: 'kf-watch' + (on ? ' on' : ''), title: on ? t('Desativar animação (remove keyframes)') : t('Animar com keyframes'), onclick: () => { store.begin(); toggleAnim(c, prop); store.commit('kf'); }, html: icon('stopwatch', 13) }),
+    on ? el('button', { class: 'kf-nav', title: t('Keyframe anterior'), onclick: () => jumpKey(c, -1) }, '‹') : null,
+    on ? el('button', { class: 'kf-dia' + (keyAtCursor(c, prop) ? ' on' : ''), title: t('Adicionar/remover keyframe'), onclick: () => { store.begin(); toggleKey(c, prop); store.commit('kf'); }, html: icon('diamond', 11) }) : null,
+    on ? el('button', { class: 'kf-nav', title: t('Próximo keyframe'), onclick: () => jumpKey(c, 1) }, '›') : null);
+  ctrl.append(kfBox);
+  if (on) r.classList.add('animated');
+  return r;
+}
+
+function kfSection(c) {
+  if (!anyKf(c)) return null;
+  const e = easeAtCursor(c);
+  return section(t('Keyframes'),
+    e ? select(t('Suavização:'), e, EASINGS.map(([v, n]) => [v, t(n)]), (v) => { store.begin(); setEaseAtCursor(c, v); store.commit('ease'); })
+      : el('div', { class: 'muted small' }, t('Posicione o cursor sobre um keyframe (◆) para escolher a suavização.')),
+    el('div', { class: 'btn-row' },
+      el('button', { class: 'btn sm', onclick: () => jumpKey(c, -1) }, '‹ ' + t('Anterior')),
+      el('button', { class: 'btn sm', onclick: () => jumpKey(c, 1) }, t('Próximo') + ' ›'),
+      el('button', { class: 'btn sm danger', onclick: () => { store.begin(); for (const k of Object.keys(c.kf)) { const pr = k; const val = valueAt(c, pr, localTime(c)); delete c.kf[pr]; if (pr === 'volume') c.volume = val; else c.transform[pr] = val; } store.commit('kf'); } }, t('Remover todos'))));
 }
 
 function color(label, value, onInput) {
@@ -115,7 +155,14 @@ function renderProject() {
     row('Duração:', el('span', {}, fmtTime(store.duration(), st.fps))),
     el('div', { class: 'divider' }),
     select('Proporção de aspecto:', st.aspect, aspectOpts, (v) => setAspect(v)),
-    select('Resolução:', res.find((r) => r[0] === short)?.[0] || 1080, res, (v) => {
+    select('Resolução:', res.find((r) => r[0] === short)?.[0] || 'custom', [...res, ['custom', t('Personalizada...')]], async (v) => {
+      if (v === 'custom') {
+        const val = await promptDialog(t('Resolução personalizada (largura x altura)'), `${st.width}x${st.height}`);
+        const m = val && /(\d+)\s*[x×*]\s*(\d+)/i.exec(val);
+        if (!m) { render(); return; }
+        store.begin(); st.width = Math.max(16, Math.round(+m[1] / 2) * 2); st.height = Math.max(16, Math.round(+m[2] / 2) * 2); st.aspect = 'custom'; store.commit('res'); bus.emit('settings-project');
+        return;
+      }
       store.begin(); const k = +v / Math.min(st.width, st.height); st.width = Math.round(st.width * k / 2) * 2; st.height = Math.round(st.height * k / 2) * 2; store.commit('res'); bus.emit('settings-project');
     }),
     row('Tamanho:', el('span', { class: 'muted' }, `${st.width} × ${st.height}`)),
@@ -193,11 +240,11 @@ function basicTab(c) {
   }
   const media = c.type === 'video' || c.type === 'image';
   bodyEl.append(section('Transformar',
-    slider('Escala', Math.round(t.scale * 100), { min: 1, max: 500, unit: '%', def: 100, onInput: (v) => upd(c, { transform: { scale: v / 100 } }) }),
-    slider('Posição X', Math.round(t.x * 1000) / 10, { min: -100, max: 100, step: 0.1, def: 0, onInput: (v) => upd(c, { transform: { x: v / 100 } }) }),
-    slider('Posição Y', Math.round(t.y * 1000) / 10, { min: -100, max: 100, step: 0.1, def: 0, onInput: (v) => upd(c, { transform: { y: v / 100 } }) }),
-    slider('Rotação', t.rotation, { min: -360, max: 360, step: 0.5, unit: '°', def: 0, onInput: (v) => upd(c, { transform: { rotation: v } }) }),
-    slider('Opacidade', Math.round(t.opacity * 100), { min: 0, max: 100, unit: '%', def: 100, onInput: (v) => upd(c, { transform: { opacity: v / 100 } }) }),
+    animSlider(c, 'scale', 'Escala', { mul: 100, min: 1, max: 500, unit: '%', def: 100 }),
+    animSlider(c, 'x', 'Posição X', { mul: 100, min: -100, max: 100, step: 0.1, def: 0 }),
+    animSlider(c, 'y', 'Posição Y', { mul: 100, min: -100, max: 100, step: 0.1, def: 0 }),
+    animSlider(c, 'rotation', 'Rotação', { min: -360, max: 360, step: 0.5, unit: '°', def: 0 }),
+    animSlider(c, 'opacity', 'Opacidade', { mul: 100, min: 0, max: 100, unit: '%', def: 100 }),
     row('Espelhar:', el('div', { class: 'btn-row' },
       el('button', { class: 'btn sm' + (t.flipH ? ' on' : ''), onclick: () => updC(c, { transform: { flipH: !t.flipH } }) }, '↔ Horizontal'),
       el('button', { class: 'btn sm' + (t.flipV ? ' on' : ''), onclick: () => updC(c, { transform: { flipV: !t.flipV } }) }, '↕ Vertical'))),
@@ -207,6 +254,8 @@ function basicTab(c) {
       el('button', { class: 'btn sm', onclick: () => updC(c, { transform: { y: 0.35 } }) }, 'Base'),
       el('button', { class: 'btn sm', onclick: () => updC(c, { transform: { x: 0, y: 0, scale: 1, rotation: 0 } }) }, 'Redefinir'))),
   ));
+  const kfs = kfSection(c);
+  if (kfs) bodyEl.append(kfs);
   if (media) {
     const cr = c.crop || { l: 0, r: 0, t: 0, b: 0 };
     bodyEl.append(section('Enquadramento',
@@ -276,7 +325,9 @@ function textTab(c) {
 
 function audioTab(c) {
   bodyEl.append(section('Áudio',
-    slider('Volume', Math.round((c.volume ?? 1) * 100), { min: 0, max: 300, unit: '%', def: 100, onInput: (v) => upd(c, { volume: v / 100 }) }),
+    animSlider(c, 'volume', 'Volume', { mul: 100, min: 0, max: 300, unit: '%', def: 100 }),
+    el('div', { class: 'muted small vol-db' }, (() => { const d = toDb(valueAt(c, 'volume', localTime(c))); return isFinite(d) ? `≈ ${d.toFixed(1)} dB` : '-∞ dB'; })()),
+    el('div', { class: 'btn-row' }, el('button', { class: 'btn sm', onclick: () => gainDialog() }, t('Ganho de áudio...') + ' (G)')),
     slider('Fade in', c.fadeIn, { min: 0, max: Math.min(10, c.duration / 2), step: 0.1, unit: 's', def: 0, onInput: (v) => upd(c, { fadeIn: v }) }),
     slider('Fade out', c.fadeOut, { min: 0, max: Math.min(10, c.duration / 2), step: 0.1, unit: 's', def: 0, onInput: (v) => upd(c, { fadeOut: v }) }),
     c.type === 'video' ? el('div', { class: 'btn-row' }, el('button', { class: 'btn', onclick: () => store.detachAudio(c.id) }, 'Separar áudio')) : null,
@@ -312,15 +363,25 @@ function animTab(c) {
 function adjustTab(c) {
   const a = c.adjust;
   const s = (label, key, min = -100, max = 100) => slider(label, a[key], { min, max, def: 0, onInput: (v) => upd(c, { adjust: { [key]: v } }) });
+  const bypass = colorBypass.has(c.id);
+  bodyEl.append(el('div', { class: 'color-tools' },
+    el('button', { class: 'btn sm', title: t('Clique no conta-gotas e depois em algo branco ou cinza no vídeo'), onclick: () => { startPick((r, g, b) => whiteBalanceFrom(c, r, g, b)); }, html: icon('pipette', 13) + `<span>${t('Balanço de branco')}</span>` }),
+    el('button', { class: 'btn sm' + (bypass ? ' on' : ''), title: t('Comparar antes/depois'), onclick: () => { bypass ? colorBypass.delete(c.id) : colorBypass.add(c.id); bus.emit('frame-ready'); render(); }, html: icon('compare', 13) + `<span>${bypass ? t('Mostrando: antes') : t('Antes/depois')}</span>` }),
+    c.mediaId ? el('button', { class: 'btn sm', title: t('Aplica estes ajustes e o filtro em todos os clipes desta mesma mídia'), onclick: () => applyColorToMedia(c) }, t('Aplicar à mídia toda')) : null));
   bodyEl.append(section('Luz',
     s('Brilho', 'brightness'), s('Contraste', 'contrast'), s('Exposição', 'exposure'),
+  ));
+  bodyEl.append(section(t('Tons'),
+    s('Realces', 'highlights'), s('Sombras', 'shadows'), s('Brancos', 'whites'), s('Pretos', 'blacks'),
   ));
   bodyEl.append(section('Cor',
     s('Saturação', 'saturation'), s('Temperatura', 'temperature'), s('Matiz (tint)', 'tint'), s('Tonalidade', 'hue'),
   ));
   bodyEl.append(section('Efeitos',
     s('Nitidez', 'sharpen', 0, 100), s('Desfoque', 'blur', 0, 100), s('Vinheta', 'vignette', 0, 100),
-    el('div', { class: 'btn-row' }, el('button', { class: 'btn', onclick: () => updC(c, { adjust: defaultAdjust() }) }, 'Redefinir ajustes')),
+    el('div', { class: 'btn-row' }, el('button', { class: 'btn', onclick: () => updC(c, { adjust: defaultAdjust() }) }, 'Redefinir ajustes'),
+      el('button', { class: 'btn', onclick: () => copyAttributes(c) }, t('Copiar atributos')),
+      el('button', { class: 'btn', disabled: !hasAttributes(), onclick: () => pasteAttributesDialog() }, t('Colar atributos...'))),
   ));
   if (c.type !== 'filter') {
     bodyEl.append(section('Filtro',

@@ -14,7 +14,7 @@ export function defaultTransform() {
   return { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1, flipH: false, flipV: false };
 }
 export function defaultAdjust() {
-  return { brightness: 0, contrast: 0, saturation: 0, exposure: 0, temperature: 0, tint: 0, hue: 0, blur: 0, vignette: 0, sharpen: 0, highlights: 0, shadows: 0 };
+  return { brightness: 0, contrast: 0, saturation: 0, exposure: 0, temperature: 0, tint: 0, hue: 0, blur: 0, vignette: 0, sharpen: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0 };
 }
 export function defaultText() {
   return {
@@ -38,6 +38,7 @@ function newProject(name = t('Projeto sem título')) {
     ],
     clips: [],
     markers: [],
+    range: null, // { in, out } marcas de Entrada/Saída da linha do tempo
   };
 }
 
@@ -67,8 +68,8 @@ class Store {
 
   // ---------- Histórico ----------
   snapshot() {
-    const { tracks, clips, settings: st, name, markers } = this.project;
-    return JSON.stringify({ tracks, clips, settings: st, name, markers });
+    const { tracks, clips, settings: st, name, markers, range } = this.project;
+    return JSON.stringify({ tracks, clips, settings: st, name, markers, range: range || null });
   }
   commit(label = '') {
     this.undoStack.push(this._last ?? this.snapshot());
@@ -130,13 +131,15 @@ class Store {
   // ---------- Seleção ----------
   select(ids, additive = false) {
     if (!additive) this.selection.clear();
-    for (const id of [].concat(ids)) {
+    this.selectedGap = null;
+    for (const id of this.withLinked([].concat(ids))) {
       if (additive && this.selection.has(id)) this.selection.delete(id); else this.selection.add(id);
     }
     this.selectedTransition = null;
     bus.emit('selection');
   }
-  clearSelection() { this.selection.clear(); this.selectedTransition = null; bus.emit('selection'); }
+  clearSelection() { this.selection.clear(); this.selectedTransition = null; this.selectedGap = null; bus.emit('selection'); }
+  selectGap(g) { this.selection.clear(); this.selectedTransition = null; this.selectedGap = g; bus.emit('selection'); }
   selectTransition(clipId) { this.selection.clear(); this.selectedTransition = clipId; bus.emit('selection'); }
 
   // ---------- Trilhas ----------
@@ -227,6 +230,7 @@ class Store {
     if (!targets.length) return [];
     this.begin();
     const created = [];
+    const linkMap = {};
     for (const c of targets) {
       const left = t - c.start;
       const b = deepClone(c);
@@ -236,6 +240,8 @@ class Store {
       b.in = (c.in || 0) + left * (c.speed || 1);
       b.transitionIn = null;
       b.animIn = null;
+      if (b.kf) for (const k of Object.keys(b.kf)) b.kf[k] = b.kf[k].map((f) => ({ ...f, t: f.t - left }));
+      if (c.linkId) { linkMap[c.linkId] = linkMap[c.linkId] || uid('lnk'); b.linkId = linkMap[c.linkId]; }
       c.duration = left;
       c.animOut = null;
       this.project.clips.push(b);
@@ -312,10 +318,79 @@ class Store {
     this.begin();
     const tr = this.findTrackFor('audio', c.start, c.start + c.duration);
     const a = normalizeClip({ ...deepClone(c), id: uid('clp'), type: 'audio', trackId: tr.id, effects: [], filter: null, transitionIn: null, animIn: null, animOut: null });
+    const link = uid('lnk');
+    a.linkId = link; c.linkId = link;
+    if (a.kf) { const v = a.kf.volume; a.kf = v ? { volume: v } : undefined; }
+    if (c.kf) delete c.kf.volume;
     this.project.clips.push(a);
     c.volume = 0; c.audioDetached = true;
     this.commit('detach');
   }
+  // clipes vinculados (vídeo + áudio separado)
+  linked(c) { return c && c.linkId ? this.project.clips.filter((x) => x.linkId === c.linkId) : (c ? [c] : []); }
+  withLinked(ids) {
+    const out = new Set(ids);
+    for (const id of ids) for (const x of this.linked(this.clip(id))) out.add(x.id);
+    return [...out];
+  }
+  link(ids = [...this.selection]) {
+    if (ids.length < 2) return;
+    this.begin();
+    const l = uid('lnk');
+    ids.forEach((id) => { const c = this.clip(id); if (c) c.linkId = l; });
+    this.commit('link');
+  }
+  unlink(ids = [...this.selection]) {
+    this.begin();
+    for (const id of ids) for (const x of this.linked(this.clip(id))) delete x.linkId;
+    this.commit('unlink');
+  }
+  // exclusão com ripple: remove e puxa os clipes seguintes da mesma trilha
+  rippleDelete(ids = [...this.selection]) {
+    const clips = ids.map((id) => this.clip(id)).filter(Boolean).sort((a, b) => b.start - a.start);
+    if (!clips.length) return;
+    this.begin();
+    for (const c of clips) {
+      const end = c.start + c.duration;
+      this.project.clips = this.project.clips.filter((x) => x !== c);
+      for (const x of this.project.clips) if (x.trackId === c.trackId && x.start >= end - 1e-4) x.start -= c.duration;
+    }
+    ids.forEach((id) => this.selection.delete(id));
+    this.removeEmptyTracks();
+    this.commit('ripple');
+    bus.emit('selection');
+  }
+  // espaço vazio em uma trilha no tempo t
+  gapAt(trackId, t) {
+    const clips = this.clipsOn(trackId);
+    if (clips.some((c) => t >= c.start && t < c.start + c.duration)) return null;
+    let start = 0, end = Infinity;
+    for (const c of clips) {
+      const e = c.start + c.duration;
+      if (e <= t + 1e-6) start = Math.max(start, e);
+      if (c.start > t) end = Math.min(end, c.start);
+    }
+    return end === Infinity || end - start < 0.01 ? null : { trackId, start, end };
+  }
+  deleteGap(g = this.selectedGap) {
+    if (!g) return;
+    this.begin();
+    const len = g.end - g.start;
+    for (const x of this.project.clips) if (x.trackId === g.trackId && x.start >= g.end - 1e-4) x.start -= len;
+    this.selectedGap = null;
+    this.commit('gap');
+    bus.emit('selection');
+  }
+  setRange(kind, t = this.time) {
+    this.begin();
+    const r = this.project.range || { in: null, out: null };
+    r[kind] = t;
+    if (r.in != null && r.out != null && r.out < r.in) [r.in, r.out] = [r.out, r.in];
+    this.project.range = r;
+    this.commit('range');
+  }
+  clearRange() { this.begin(); this.project.range = null; this.commit('range'); }
+
   // magnetismo da trilha principal: remove espaços vazios
   applyMagnet() {
     if (!settings.get('magnet')) return;

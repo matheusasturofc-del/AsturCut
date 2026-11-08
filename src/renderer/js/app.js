@@ -14,6 +14,9 @@ import { addText } from './actions.js';
 import { t, initLang, detectLang, startAutoTranslate } from './i18n.js';
 import { saveProject, newProject, openProject, confirmDiscard, getRecent, scheduleRecovery, clearRecovery, defaultName } from './projects.js';
 import { showHome, hideHome, isHomeVisible } from './home.js';
+import { actionFor, GLOBAL } from './keymap.js';
+import { speedDialog, gainDialog, setLabel, LABELS, pasteAttributesDialog } from './editTools.js';
+import { openMixer } from './audiomix.js';
 
 // ---------- Barra de título ----------
 function buildTitlebar() {
@@ -67,6 +70,9 @@ function mainMenu(anchor) {
     { label: t('Desfazer'), shortcut: 'Ctrl+Z', onClick: () => store.undo() },
     { label: t('Refazer'), shortcut: 'Ctrl+Y', onClick: () => store.redo() },
     '-',
+    { label: t('Mixer de áudio'), shortcut: 'Ctrl+Alt+M', onClick: () => openMixer() },
+    { label: t('Maximizar painel sob o mouse'), shortcut: '`', onClick: () => toggleMaximize() },
+    '-',
     { label: t('Personalizar...'), shortcut: 'Ctrl+,', onClick: () => openCustomize('theme') },
     { label: t('Atalhos do teclado'), onClick: () => openCustomize('keys') },
     { label: t('Tela inicial'), onClick: () => showHome() },
@@ -74,6 +80,21 @@ function mainMenu(anchor) {
     isDesktop ? '-' : null,
     isDesktop ? { label: t('Sair'), onClick: () => api.close() } : null,
   ]);
+}
+
+function customLayoutItems() {
+  const list = settings.get('customLayouts') || [];
+  if (!list.length) return [];
+  return ['-', ...list.map((l) => ({ label: '★ ' + l.name, onClick: () => { settings.patch({ ...l.data, layoutPreset: 'custom' }); toast(t('Layout: {name}', { name: l.name }), 'info', 1500); } })),
+    { label: t('Excluir layouts salvos...'), submenu: list.map((l) => ({ label: l.name, onClick: () => settings.set('customLayouts', (settings.get('customLayouts') || []).filter((x) => x !== l), true) })) }];
+}
+async function saveCustomLayout() {
+  const n = await promptDialog(t('Nome do layout'), t('Meu layout'));
+  if (!n) return;
+  const keys = ['panelOrder', 'libWidth', 'inspWidth', 'timelineHeight', 'showLibrary', 'showInspector'];
+  const data = Object.fromEntries(keys.map((k) => [k, structuredClone(settings.get(k))]));
+  settings.set('customLayouts', [...(settings.get('customLayouts') || []).filter((l) => l.name !== n), { name: n, data }], true);
+  toast(t('Layout salvo'), 'success');
 }
 
 function layoutMenu(anchor) {
@@ -84,63 +105,95 @@ function layoutMenu(anchor) {
     { label: t('Mostrar biblioteca'), checked: settings.get('showLibrary'), onClick: () => togglePanel('library') },
     { label: t('Mostrar propriedades'), checked: settings.get('showInspector'), onClick: () => togglePanel('inspector') },
     '-',
+    ...customLayoutItems(),
+    { label: t('Salvar layout atual...'), onClick: () => saveCustomLayout() },
+    '-',
     { label: t('Mais opções de layout...'), onClick: () => openCustomize('layout') },
   ]);
 }
 
 // ---------- Atalhos ----------
 function isTyping(e) {
-  const t = e.target;
-  return t && (t.tagName === 'INPUT' && !['range', 'checkbox', 'color', 'button'].includes(t.type) || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  const tg = e.target;
+  return tg && (tg.tagName === 'INPUT' && !['range', 'checkbox', 'color', 'button'].includes(tg.type) || tg.tagName === 'TEXTAREA' || tg.tagName === 'SELECT' || tg.isContentEditable);
 }
 function editPoints() {
   const pts = new Set([0]);
   for (const c of store.p.clips) { pts.add(+c.start.toFixed(4)); pts.add(+(c.start + c.duration).toFixed(4)); }
-  return [...pts].sort((a, b) => a - b);
+  return [...pts].sort((x, y) => x - y);
 }
+let labelIdx = 0;
+const ACTION_FN = {
+  play: () => togglePlay(),
+  frameBack: () => step(-1),
+  frameFwd: () => step(1),
+  secBack: () => { pause(); store.setTime(store.time - 1); },
+  secFwd: () => { pause(); store.setTime(store.time + 1); },
+  prevEdit: () => { pause(); const p = editPoints().filter((x) => x < store.time - 1e-3); store.setTime(p.length ? p[p.length - 1] : 0); },
+  nextEdit: () => { pause(); const p = editPoints().find((x) => x > store.time + 1e-3); if (p != null) store.setTime(p); },
+  home: () => { pause(); store.setTime(0); },
+  end: () => { pause(); store.setTime(store.duration()); },
+  split: () => store.splitAt(store.time, store.selection.size ? store.withLinked([...store.selection]) : null),
+  deleteLeft: () => store.deleteLeft(),
+  deleteRight: () => store.deleteRight(),
+  delete: () => {
+    if (store.selectedTransition) { store.updateClip(store.selectedTransition, { transitionIn: null }); store.clearSelection(); }
+    else if (store.selectedGap) store.deleteGap();
+    else store.deleteClips();
+  },
+  rippleDelete: () => (store.selectedGap ? store.deleteGap() : store.rippleDelete()),
+  toolSelect: () => setMode('select'),
+  toolBlade: () => setMode('blade'),
+  toolForward: () => setMode('forward'),
+  markIn: () => store.setRange('in'),
+  markOut: () => store.setRange('out'),
+  clearInOut: () => store.clearRange(),
+  marker: () => store.addMarker(),
+  text: () => addText('default'),
+  speed: () => speedDialog(),
+  gain: () => gainDialog(),
+  label: () => { if (!store.selection.size) return; setLabel(LABELS[labelIdx % LABELS.length][0]); labelIdx++; },
+  zoomIn: () => zoom(1.3),
+  zoomOut: () => zoom(1 / 1.3),
+  zoomFit: () => fit(),
+  maximize: () => toggleMaximize(),
+  undo: () => store.undo(),
+  redo: () => store.redo(),
+  copy: () => { const n = store.copy(); if (n) toast(t('{n} clipe(s) copiado(s)', { n }), 'info', 1200); },
+  paste: () => store.paste(),
+  pasteAttr: () => pasteAttributesDialog(),
+  duplicate: () => store.duplicate(),
+  selectAll: () => store.select(store.p.clips.map((c) => c.id)),
+  deselect: () => store.clearSelection(),
+  mixer: () => openMixer(),
+  save: () => saveProject(),
+  saveAs: () => saveProject(true),
+  open: () => openProject(),
+  new: () => newProject(),
+  import: () => importViaDialog(),
+  export: () => openExportDialog(),
+  customize: () => openCustomize('theme'),
+  fullscreen: () => { if (isDesktop) api.toggleFullscreen(); },
+};
+
+// maximizar o painel sob o mouse (tecla `)
+let hovered = null;
+document.addEventListener('pointerover', (e) => { const p = e.target.closest?.('.panel'); if (p) hovered = p; });
+function toggleMaximize() {
+  const ws = $('#workspace');
+  if (ws.dataset.max) { delete ws.dataset.max; document.querySelectorAll('.panel.maxed').forEach((n) => n.classList.remove('maxed')); }
+  else if (hovered) { ws.dataset.max = '1'; hovered.classList.add('maxed'); }
+  window.dispatchEvent(new Event('resize'));
+}
+
 document.addEventListener('keydown', (e) => {
   if (document.querySelector('.modal-overlay')) return;
-  if (isHomeVisible()) { if ((e.ctrlKey || e.metaKey) && ['n', 'o', ','].includes(e.key.toLowerCase())) { e.preventDefault(); ({ n: () => newProject(), o: () => openProject(), ',': () => openCustomize('theme') })[e.key.toLowerCase()](); } return; }
-  const ctrl = e.ctrlKey || e.metaKey;
-  const k = e.key.toLowerCase();
-  if (ctrl) {
-    const map = {
-      s: () => saveProject(e.shiftKey), o: () => openProject(), n: () => newProject(), i: () => importViaDialog(), e: () => openExportDialog(),
-      ',': () => openCustomize('theme'),
-    };
-    if (map[k]) { e.preventDefault(); map[k](); return; }
-  }
-  if (isTyping(e)) return;
-  if (ctrl) {
-    const map = {
-      z: () => (e.shiftKey ? store.redo() : store.undo()), y: () => store.redo(), b: () => store.splitAt(), c: () => { const n = store.copy(); if (n) toast(t('{n} clipe(s) copiado(s)', { n }), 'info', 1200); },
-      v: () => store.paste(), d: () => store.duplicate(), a: () => store.select(store.p.clips.map((c) => c.id)),
-    };
-    if (map[k]) { e.preventDefault(); map[k](); }
-    return;
-  }
-  switch (e.key) {
-    case ' ': e.preventDefault(); togglePlay(); break;
-    case 'ArrowLeft': e.preventDefault(); e.shiftKey ? (pause(), store.setTime(store.time - 1)) : step(-1); break;
-    case 'ArrowRight': e.preventDefault(); e.shiftKey ? (pause(), store.setTime(store.time + 1)) : step(1); break;
-    case 'ArrowUp': { e.preventDefault(); pause(); const p = editPoints().filter((x) => x < store.time - 1e-3); store.setTime(p.length ? p[p.length - 1] : 0); break; }
-    case 'ArrowDown': { e.preventDefault(); pause(); const p = editPoints().find((x) => x > store.time + 1e-3); if (p != null) store.setTime(p); break; }
-    case 'Home': pause(); store.setTime(0); break;
-    case 'End': pause(); store.setTime(store.duration()); break;
-    case 'Delete': case 'Backspace': if (store.selectedTransition) { store.updateClip(store.selectedTransition, { transitionIn: null }); store.clearSelection(); } else store.deleteClips(); break;
-    case 'Escape': store.clearSelection(); break;
-    case 'F11': if (isDesktop) { e.preventDefault(); api.toggleFullscreen(); } break;
-    default:
-      if (k === 's') store.splitAt();
-      else if (k === 'q') store.deleteLeft();
-      else if (k === 'w') store.deleteRight();
-      else if (k === 'v') setMode('select');
-      else if (k === 'b') setMode('blade');
-      else if (k === 'm') store.addMarker();
-      else if (k === 't') addText('default');
-      else if (e.key === '+' || e.key === '=') zoom(1.3);
-      else if (e.key === '-') zoom(1 / 1.3);
-  }
+  const id = actionFor(e);
+  if (isHomeVisible()) { if (['new', 'open', 'customize', 'fullscreen'].includes(id)) { e.preventDefault(); ACTION_FN[id](); } return; }
+  if (!id) return;
+  if (isTyping(e) && !GLOBAL.has(id)) return;
+  e.preventDefault();
+  ACTION_FN[id]?.();
 });
 
 // arrastar arquivos do sistema para qualquer lugar

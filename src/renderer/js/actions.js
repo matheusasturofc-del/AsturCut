@@ -51,6 +51,24 @@ export function addMedia(m, info = null) {
   return store.addMediaClip(m);
 }
 
+// insere um trecho (Entrada→Saída) de uma mídia — opcionalmente só o vídeo ou só o áudio
+export function addMediaRange(m, r, info = null) {
+  if (!m) return;
+  const dur = Math.max(0.1, (r.out ?? m.duration) - (r.in || 0));
+  const type = r.only === 'audio' || m.type === 'audio' ? 'audio' : 'video';
+  const start = info?.t ?? store.time;
+  store.begin();
+  let track = null;
+  if (info?.trackId) { const tr = store.track(info.trackId); if (tr && tr.type === type && !tr.locked && store.isFree(tr.id, start, start + dur)) track = tr; }
+  if (!track && info?.newzone) track = store.addTrack(type, type === 'audio' ? null : info.newzone === 'top' ? 0 : Math.max(0, store.p.tracks.findIndex((t) => t.main)));
+  if (!track) track = store.findTrackFor(type, start, start + dur, true);
+  return store.addClip({
+    trackId: track.id, type: type === 'audio' ? 'audio' : 'video', mediaId: m.id, name: m.name, start, duration: dur, in: r.in || 0,
+    ...(r.only === 'video' ? { volume: 0, audioDetached: true } : {}),
+  });
+}
+bus.on('source-add', ({ media, in: i, out, only }) => addMediaRange(media, { in: i, out, only }));
+
 export function addText(presetId = 'default', info = null) {
   const p = TEXT_PRESETS.find((x) => x.id === presetId) || TEXT_PRESETS[0];
   const text = { ...defaultText(), ...deepClone(p.t) };
@@ -168,7 +186,7 @@ export async function handleDrop(dt, info) {
   if (raw) {
     const d = JSON.parse(raw);
     switch (d.kind) {
-      case 'media': return addMedia(store.media(d.id), info);
+      case 'media': return d.in != null || d.only ? addMediaRange(store.media(d.id), { in: d.in, out: d.out, only: d.only }, info) : addMedia(store.media(d.id), info);
       case 'text': return addText(d.id, info);
       case 'sticker': return addSticker(d.id, info);
       case 'shape': return addShape(d.id, info);

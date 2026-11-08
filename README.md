@@ -36,6 +36,18 @@ Como o instalador não é assinado digitalmente, o Windows SmartScreen pode most
 - Corte (crop), modos de ajuste (conter, preencher, esticar), 16 modos de mistura
 - Proporções 16:9, 9:16, 1:1, 4:3, 4:5, 21:9 e original, com fundo em cor ou desfocado
 
+**Ferramentas profissionais** (inspiradas no fluxo do Premiere)
+- Pastas de mídia (bins), ordenação por nome/tipo/duração e modo lista ou grade
+- Visualizador de origem: marque Entrada (I) e Saída (O) e insira só o trecho, só o vídeo ou só o áudio
+- Rótulos de cor nos clipes (L), exclusão com ripple (Shift+Delete), selecionar e apagar espaços vazios
+- Ferramenta "selecionar à frente" (A), vincular/desvincular áudio e vídeo, solo de trilha
+- Keyframes em posição, escala, rotação, opacidade e volume, com suavização (ease in/out)
+- Velocidade/duração (Ctrl+R) e ganho de áudio em dB (G)
+- Mixer de áudio por trilha: equalizador com curva, compressor, limitador, redução de ruído, pan, volume e medidores
+- Cor: realces, sombras, brancos e pretos, conta-gotas de balanço de branco, antes/depois e aplicar a toda a mídia
+- Copiar e colar atributos (Ctrl+Alt+V), marcas de Entrada/Saída na timeline e exportar só esse intervalo
+- Maximizar o painel sob o mouse (tecla `), atalhos totalmente remapeáveis, resolução personalizada e layouts salvos
+
 **Biblioteca grátis**
 - **50 fontes** do Google Fonts embutidas, com favoritas. Também dá para importar suas próprias fontes `.ttf`/`.otf`
 - **46 efeitos**: VHS, glitch, aberração cromática, filme antigo, neon, duotone, chuva, neve, confete, corações, bokeh, tremor, zoom, flash e outros

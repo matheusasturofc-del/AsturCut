@@ -5,6 +5,10 @@ import { runtime } from './media.js';
 import { settings } from './settings.js';
 import { player, pause } from './player.js';
 import { handleDrop } from './actions.js';
+import { keyTimes } from './keyframes.js';
+import { labelMenu, speedDialog, gainDialog, copyAttributes, pasteAttributesDialog, hasAttributes } from './editTools.js';
+import { openMixer } from './audiomix.js';
+import { openSource } from './source.js';
 
 const HEAD_W = 112;
 const RULER_H = 28;
@@ -22,6 +26,7 @@ export function initTimeline() {
   tb.append(
     btn('cursor', 'Selecionar (V)', () => setMode('select'), 'tl-mode-select'),
     btn('blade', 'Lâmina — clique para cortar (B)', () => setMode('blade'), 'tl-mode-blade'),
+    btn('forward', 'Selecionar à frente — seleciona tudo à direita do clique (A)', () => setMode('forward'), 'tl-mode-forward'),
     el('div', { class: 'tb-sep' }),
     btn('undo', 'Desfazer (Ctrl+Z)', () => store.undo()),
     btn('redo', 'Refazer (Ctrl+Y)', () => store.redo()),
@@ -30,10 +35,13 @@ export function initTimeline() {
     btn('splitL', 'Excluir à esquerda (Q)', () => store.deleteLeft()),
     btn('splitR', 'Excluir à direita (W)', () => store.deleteRight()),
     btn('trash', 'Excluir (Delete)', () => store.deleteClips()),
+    btn('ripple', 'Excluir e fechar o espaço — ripple (Shift+Delete)', () => (store.selectedGap ? store.deleteGap() : store.rippleDelete())),
     btn('duplicate', 'Duplicar (Ctrl+D)', () => store.duplicate()),
     btn('detach', 'Separar áudio', () => { const c = store.primarySelected(); if (c?.type === 'video') { store.detachAudio(c.id); toast('Áudio separado', 'success'); } else toast('Selecione um vídeo', 'error'); }),
     btn('marker', 'Adicionar marcador (M)', () => store.addMarker()),
     el('div', { class: 'grow' }),
+    btn('mixer', 'Mixer de áudio (efeitos por trilha)', () => openMixer()),
+    el('div', { class: 'tb-sep' }),
     el('button', { class: 'icon-btn toggle', id: 'tl-magnet', title: 'Trilha principal magnética', onclick: () => { settings.set('magnet', !settings.get('magnet')); store.applyMagnet(); bus.emit('change', 'magnet'); syncToggles(); }, html: icon('magnet') }),
     el('button', { class: 'icon-btn toggle', id: 'tl-snap', title: 'Encaixe automático', onclick: () => { settings.set('snapping', !settings.get('snapping')); syncToggles(); }, html: icon('snap') }),
     el('div', { class: 'tb-sep' }),
@@ -82,7 +90,9 @@ export function setMode(m) {
   mode = m;
   $('#tl-mode-select')?.classList.toggle('on', m === 'select');
   $('#tl-mode-blade')?.classList.toggle('on', m === 'blade');
+  $('#tl-mode-forward')?.classList.toggle('on', m === 'forward');
   root?.classList.toggle('blade-mode', m === 'blade');
+  root?.classList.toggle('forward-mode', m === 'forward');
 }
 export function getMode() { return mode; }
 
@@ -176,6 +186,7 @@ function renderTrack(tr, W) {
         ? el('button', { class: 'icon-btn xs' + (tr.hidden ? ' on' : ''), title: tr.hidden ? 'Mostrar' : 'Ocultar', onclick: () => { store.begin(); tr.hidden = !tr.hidden; store.commit('hide'); }, html: icon(tr.hidden ? 'eyeOff' : 'eye', 13) })
         : null,
       el('button', { class: 'icon-btn xs' + (tr.muted ? ' on' : ''), title: tr.muted ? 'Ativar som' : 'Silenciar', onclick: () => { store.begin(); tr.muted = !tr.muted; store.commit('mute'); }, html: icon(tr.muted ? 'mute' : 'volume', 13) }),
+      el('button', { class: 'icon-btn xs solo' + (tr.solo ? ' on' : ''), title: 'Solo (ouvir só esta trilha)', onclick: () => { store.begin(); tr.solo = !tr.solo; store.commit('solo'); } }, 'S'),
     ));
   head.addEventListener('contextmenu', (e) => {
     e.preventDefault();
@@ -183,6 +194,8 @@ function renderTrack(tr, W) {
       { label: 'Renomear', onClick: async () => { const n = await promptDialog('Renomear trilha', tr.name); if (n) { store.begin(); tr.name = n; store.commit('rename'); } } },
       { label: 'Mover para cima', onClick: () => moveTrack(tr, -1) },
       { label: 'Mover para baixo', onClick: () => moveTrack(tr, 1) },
+      { label: 'Efeitos de áudio da trilha...', onClick: () => openMixer(tr.id) },
+      { label: 'Selecionar todos os clipes da trilha', onClick: () => store.select(store.clipsOn(tr.id).map((c) => c.id)) },
       '-',
       { label: 'Excluir trilha', disabled: tr.main, onClick: () => { store.begin(); store.p.clips = store.p.clips.filter((c) => c.trackId !== tr.id); store.p.tracks = store.p.tracks.filter((t) => t !== tr); store.commit('deltrack'); } },
     ]);
@@ -190,11 +203,28 @@ function renderTrack(tr, W) {
   const lane = el('div', { class: 'tl-lane', style: { width: W + 'px' } });
   lane.addEventListener('pointerdown', (e) => {
     if (e.target !== lane || e.button !== 0) return;
-    store.clearSelection();
-    pause();
     const r = lane.getBoundingClientRect();
-    store.setTime(Math.max(0, (e.clientX - r.left) / pps));
+    const tt = Math.max(0, (e.clientX - r.left) / pps);
+    if (mode === 'forward') { selectForward(tt, e.shiftKey ? tr.id : null, e); return; }
+    pause();
+    const g = store.gapAt(tr.id, tt);
+    if (g) store.selectGap(g); else store.clearSelection();
+    store.setTime(tt);
   });
+  lane.addEventListener('contextmenu', (e) => {
+    if (e.target !== lane) return;
+    e.preventDefault();
+    const r = lane.getBoundingClientRect();
+    const g = store.gapAt(tr.id, Math.max(0, (e.clientX - r.left) / pps));
+    contextMenu(e.clientX, e.clientY, [
+      { label: 'Excluir espaço vazio (ripple)', disabled: !g, onClick: () => store.deleteGap(g) },
+      { label: 'Colar', shortcut: 'Ctrl+V', disabled: !store.clipboard.length, onClick: () => store.paste() },
+    ]);
+  });
+  if (store.selectedGap && store.selectedGap.trackId === tr.id) {
+    const g = store.selectedGap;
+    lane.append(el('div', { class: 'tl-gap-sel', style: { left: (g.start * pps) + 'px', width: ((g.end - g.start) * pps) + 'px' } }));
+  }
   const sorted = store.clipsOn(tr.id);
   for (const c of sorted) lane.append(renderClip(c, tr, h));
   // botões de transição entre clipes adjacentes
@@ -239,7 +269,7 @@ function clipLabel(c) {
 function renderClip(c, tr, h) {
   const w = Math.max(2, c.duration * pps);
   const sel = store.selection.has(c.id);
-  const node = el('div', { class: `tl-clip ${c.type}${sel ? ' selected' : ''}`, style: { left: (c.start * pps) + 'px', width: w + 'px' }, dataset: { clip: c.id } });
+  const node = el('div', { class: `tl-clip ${c.type}${sel ? ' selected' : ''}${c.label ? ' labeled' : ''}${c.linkId ? ' linked' : ''}`, style: { left: (c.start * pps) + 'px', width: w + 'px', ...(c.label ? { '--label': c.label } : {}) }, dataset: { clip: c.id } });
   const m = c.mediaId ? store.media(c.mediaId) : null;
   const rt = m ? runtime.get(m.id) : null;
   if ((c.type === 'video' || c.type === 'image') && settings.get('showThumbs')) {
@@ -284,6 +314,11 @@ function renderClip(c, tr, h) {
     if (c.fadeIn) node.append(el('div', { class: 'clip-fade in', style: { width: (c.fadeIn * pps) + 'px' } }));
     if (c.fadeOut) node.append(el('div', { class: 'clip-fade out', style: { width: (c.fadeOut * pps) + 'px' } }));
   }
+  if (sel) for (const kt of keyTimes(c)) {
+    const d = el('div', { class: 'clip-kf', title: 'Keyframe', style: { left: (kt * pps) + 'px' } });
+    d.addEventListener('pointerdown', (e) => { e.stopPropagation(); pause(); store.setTime(c.start + kt); });
+    node.append(d);
+  }
   const hl = el('div', { class: 'clip-handle l' });
   const hr = el('div', { class: 'clip-handle r' });
   node.append(hl, hr);
@@ -296,7 +331,12 @@ function renderClip(c, tr, h) {
     if (mode === 'blade') {
       const r = node.getBoundingClientRect();
       const t = c.start + (e.clientX - r.left) / pps;
-      store.splitAt(t, [c.id]);
+      store.splitAt(t, store.withLinked([c.id]));
+      return;
+    }
+    if (mode === 'forward') {
+      const r = node.getBoundingClientRect();
+      selectForward(c.start + (e.clientX - r.left) / pps, e.shiftKey ? tr.id : null, e);
       return;
     }
     if (e.shiftKey || e.ctrlKey || e.metaKey) { store.select(c.id, true); return; }
@@ -331,8 +371,19 @@ function drawWave(cv, c, rt, w, h) {
   }
 }
 
+// ferramenta "selecionar à frente": tudo que começa depois do clique (Shift = só esta trilha)
+function selectForward(tt, trackId, e) {
+  const clips = store.p.clips.filter((c) => c.start + c.duration > tt + 1e-4 && (!trackId || c.trackId === trackId) && !store.track(c.trackId)?.locked);
+  if (!clips.length) { store.clearSelection(); return; }
+  store.select(clips.map((c) => c.id));
+  const first = clips.reduce((a, b) => (a.start <= b.start ? a : b));
+  startMove(e, first);
+}
+
 export function clipMenu(x, y, c) {
   const isVis = ['video', 'image', 'text', 'sticker', 'shape'].includes(c.type);
+  const multi = store.selection.size > 1;
+  const linked = !!c.linkId;
   contextMenu(x, y, [
     { label: 'Dividir', shortcut: 'Ctrl+B', onClick: () => store.splitAt() },
     { label: 'Duplicar', shortcut: 'Ctrl+D', onClick: () => store.duplicate() },
@@ -344,8 +395,17 @@ export function clipMenu(x, y, c) {
     isVis ? { label: 'Girar 90°', onClick: () => store.updateClip(c.id, { transform: { rotation: (c.transform.rotation + 90) % 360 } }) } : null,
     hasAudio(c) ? { label: c.volume === 0 ? 'Ativar som do clipe' : 'Silenciar clipe', onClick: () => store.updateClip(c.id, { volume: c.volume === 0 ? 1 : 0 }) } : null,
     { label: 'Velocidade', submenu: [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5].map((s) => ({ label: s + 'x', checked: (c.speed || 1) === s, onClick: () => setSpeed(c, s) })) },
+    { label: 'Velocidade e duração...', shortcut: 'Ctrl+R', onClick: () => speedDialog() },
+    hasAudio(c) ? { label: 'Ganho de áudio...', shortcut: 'G', onClick: () => gainDialog() } : null,
+    { label: 'Rótulo', submenu: labelMenu() },
+    linked ? { label: 'Desvincular áudio e vídeo', onClick: () => store.unlink() } : multi ? { label: 'Vincular clipes', onClick: () => store.link() } : null,
+    c.mediaId && store.media(c.mediaId) && store.media(c.mediaId).type !== 'image' ? { label: 'Abrir no visualizador de origem', onClick: () => openSource(store.media(c.mediaId)) } : null,
+    '-',
+    { label: 'Copiar atributos', onClick: () => copyAttributes(c) },
+    { label: 'Colar atributos...', shortcut: 'Ctrl+Alt+V', disabled: !hasAttributes(), onClick: () => pasteAttributesDialog() },
     '-',
     { label: 'Excluir', shortcut: 'Del', onClick: () => store.deleteClips() },
+    { label: 'Excluir e fechar espaço (ripple)', shortcut: 'Shift+Del', onClick: () => store.rippleDelete() },
   ]);
 }
 
@@ -553,6 +613,15 @@ function drawRuler() {
   }
   x.globalAlpha = 1;
   const accent = cs.getPropertyValue('--accent').trim();
+  const rg = store.p.range;
+  if (rg && (rg.in != null || rg.out != null)) {
+    const a = ((rg.in ?? 0) - t0) * pps, b = ((rg.out ?? store.duration()) - t0) * pps;
+    x.fillStyle = accent; x.globalAlpha = 0.22; x.fillRect(a, 0, b - a, RULER_H); x.globalAlpha = 1;
+    x.fillRect(a, RULER_H - 3, b - a, 3);
+    x.font = '700 10px sans-serif';
+    if (rg.in != null) x.fillText('{', a + 2, 22);
+    if (rg.out != null) x.fillText('}', b - 8, 22);
+  }
   for (const m of store.p.markers || []) {
     const px = (m.time - t0) * pps;
     if (px < -6 || px > vw + 6) continue;

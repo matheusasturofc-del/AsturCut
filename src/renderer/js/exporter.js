@@ -20,7 +20,13 @@ export function openExportDialog() {
     fps: st.fps,
     format: isDesktop ? 'mp4' : 'webm',
     quality: 'high',
+    range: 'all',
   };
+  const rg = store.p.range;
+  const hasRange = rg && (rg.in != null || rg.out != null);
+  const rIn = hasRange ? (rg.in ?? 0) : 0, rOut = hasRange ? Math.min(rg.out ?? dur, dur) : dur;
+  if (hasRange) opts.range = 'io';
+  const expDur = () => (opts.range === 'io' ? Math.max(0.1, rOut - rIn) : dur);
   const est = el('div', { class: 'muted small' });
   const sizeFor = () => {
     const k = Math.min(st.width, st.height);
@@ -30,7 +36,7 @@ export function openExportDialog() {
   const updateEst = () => {
     const { W, H } = sizeFor();
     const mbps = bitrate(W, H, opts.quality) / 1e6;
-    est.textContent = t('{w}×{h} · {fps} fps · duração {d} · tamanho estimado ~{size}', { w: W, h: H, fps: opts.fps, d: fmtTime(dur, opts.fps), size: fmtBytes(mbps * 1e6 / 8 * dur * (opts.format === 'mp4' ? 0.7 : 1)) });
+    est.textContent = t('{w}×{h} · {fps} fps · duração {d} · tamanho estimado ~{size}', { w: W, h: H, fps: opts.fps, d: fmtTime(expDur(), opts.fps), size: fmtBytes(mbps * 1e6 / 8 * expDur() * (opts.format === 'mp4' ? 0.7 : 1)) });
   };
   const field = (label, ctrl) => el('div', { class: 'exp-field' }, el('label', {}, label), ctrl);
   const sel = (key, list) => {
@@ -52,6 +58,7 @@ export function openExportDialog() {
       field('Resolução', sel('res', RES)),
       field('Taxa de quadros', sel('fps', [[24, '24 fps'], [25, '25 fps'], [30, '30 fps'], [50, '50 fps'], [60, '60 fps']])),
       field('Formato', sel('format', formats)),
+      hasRange ? field('Intervalo', sel('range', [['all', 'Linha do tempo inteira'], ['io', `${t('Entrada → Saída')} (${fmtTime(rIn, opts.fps)} – ${fmtTime(rOut, opts.fps)})`]])) : null,
       field('Qualidade', sel('quality', [['low', 'Baixa (arquivo menor)'], ['medium', 'Recomendada'], ['high', 'Alta'], ['max', 'Máxima']])),
       est,
       el('div', { class: 'exp-note' }, el('span', { html: icon('info', 14) }), el('span', {}, 'A exportação é feita em tempo real: deixe o AsturCut aberto até terminar.')),
@@ -61,7 +68,7 @@ export function openExportDialog() {
     title: 'Exportar', width: 720, body,
     actions: [
       { label: 'Cancelar' },
-      { label: 'Exportar', primary: true, onClick: () => { const { W, H } = sizeFor(); startExport({ ...opts, W, H, duration: dur }); } },
+      { label: 'Exportar', primary: true, onClick: () => { const { W, H } = sizeFor(); startExport({ ...opts, W, H, start: opts.range === 'io' ? rIn : 0, duration: expDur() }); } },
     ],
   });
 }
@@ -116,10 +123,11 @@ async function startExport(o) {
   const stopped = new Promise((res) => (rec.onstop = res));
 
   // pré-carregamento: posiciona mídias no início
-  syncMedia(0, false);
+  const T0 = o.start || 0;
+  syncMedia(T0, false);
   setP(0, 'Carregando mídias...');
   await new Promise((r) => setTimeout(r, 700));
-  renderFrame(ctx, 0);
+  renderFrame(ctx, T0);
 
   rec.start(1000);
   const t0 = performance.now();
@@ -132,13 +140,13 @@ async function startExport(o) {
       if (cancelled) return resolve();
       const now = performance.now();
       const tt = (now - t0) / 1000;
-      if (tt >= o.duration) { store.time = o.duration; renderFrame(ctx, o.duration - 0.001); vTrack.requestFrame?.(); return resolve(); }
-      store.time = tt;
-      syncMedia(tt, true);
+      if (tt >= o.duration) { store.time = T0 + o.duration; renderFrame(ctx, T0 + o.duration - 0.001); vTrack.requestFrame?.(); return resolve(); }
+      store.time = T0 + tt;
+      syncMedia(T0 + tt, true);
       if (now >= next) {
         next += frameDur;
         if (now - next > frameDur * 3) next = now + frameDur;
-        renderFrame(ctx, tt);
+        renderFrame(ctx, T0 + tt);
         vTrack.requestFrame?.();
         if (now - lastPrev > 120) { pctx.drawImage(canvas, 0, 0, prevC.width, prevC.height); lastPrev = now; }
         setP(tt / o.duration * (o.format === 'webm' || !isDesktop ? 1 : 0.8), t('Gravando {a} / {b}', { a: fmtTime(tt, o.fps), b: fmtTime(o.duration, o.fps) }));

@@ -1,7 +1,8 @@
 // Painel da biblioteca: Mídia, Áudio, Texto, Stickers, Efeitos, Transições, Filtros, Animações e Fontes
 import { store, bus } from './store.js';
 import { t } from './i18n.js';
-import { $, el, icon, fmtShort, fmtBytes, contextMenu, toast, ease } from './util.js';
+import { $, el, icon, fmtShort, fmtBytes, contextMenu, toast, ease, promptDialog } from './util.js';
+import { openSource } from './source.js';
 import { runtime, importViaDialog, importDropped, BACKGROUNDS, addBackground, drawBackground, importFonts, customFonts, isDesktop, api } from './media.js';
 import { settings } from './settings.js';
 import { addMedia, addText, addSticker, addShape, applyEffect, applyFilter, applyTransition, applyAnimation, addAudio } from './actions.js';
@@ -167,29 +168,115 @@ function renderMedia() {
     ));
     return;
   }
-  content.append(searchBox('Buscar mídia...'));
-  const grid = el('div', { class: 'grid' });
-  for (const m of list) {
+  // barra: busca, ordenar, lista/grade, nova pasta
+  const sortSel = el('select', { class: 'select sm' }, [['name', 'Nome'], ['type', 'Tipo'], ['duration', 'Duração'], ['date', 'Importação']].map(([v, n]) => el('option', { value: v, selected: settings.get('mediaSort') === v }, n)));
+  sortSel.addEventListener('change', () => { settings.set('mediaSort', sortSel.value, true); renderContent(); });
+  const view = settings.get('mediaView') || 'grid';
+  content.append(el('div', { class: 'media-bar' }, searchBox('Buscar mídia...'),
+    el('div', { class: 'media-bar-row' }, el('span', { class: 'muted small' }, t('Ordenar')), sortSel, el('div', { class: 'grow' }),
+      el('button', { class: 'icon-btn sm' + (view === 'grid' ? ' on' : ''), title: 'Grade', onclick: () => { settings.set('mediaView', 'grid', true); renderContent(); }, html: icon('gridview', 14) }),
+      el('button', { class: 'icon-btn sm' + (view === 'list' ? ' on' : ''), title: 'Lista', onclick: () => { settings.set('mediaView', 'list', true); renderContent(); }, html: icon('list', 14) }),
+      el('button', { class: 'icon-btn sm', title: 'Nova pasta', onclick: newBin, html: icon('bin', 15) }))));
+  store.p.bins = store.p.bins || [];
+  if (currentBin && !store.p.bins.some((b) => b.id === currentBin)) currentBin = null;
+  if (currentBin) {
+    const b = store.p.bins.find((x) => x.id === currentBin);
+    const crumb = el('div', { class: 'bin-crumb' }, el('button', { class: 'link-btn', onclick: () => { currentBin = null; renderContent(); } }, '← ' + t('Mídia')), el('span', { class: 'muted' }, ' / '), el('b', { class: 'no-tr' }, b.name));
+    crumb.addEventListener('dragover', (e) => e.preventDefault());
+    crumb.addEventListener('drop', (e) => { e.preventDefault(); moveToBin(e, null); });
+    content.append(crumb);
+  }
+  const SORT = {
+    name: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }),
+    type: (a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
+    duration: (a, b) => (b.duration || 0) - (a.duration || 0),
+    date: () => 0,
+  };
+  const items = list.filter((m) => search || (m.binId || null) === currentBin).sort(SORT[settings.get('mediaSort')] || SORT.date);
+  const grid = el('div', { class: view === 'list' ? 'media-list' : 'grid' });
+  if (!currentBin && !search) {
+    for (const b of store.p.bins) {
+      const count = store.p.media.filter((m) => m.binId === b.id).length;
+      const bt = view === 'list'
+        ? el('div', { class: 'mrow bin' }, el('span', { class: 'mrow-ic', html: icon('folder', 18) }), el('div', { class: 'mrow-name no-tr' }, b.name), el('span', { class: 'muted small' }, count))
+        : el('div', { class: 'tile bin-tile' }, el('div', { class: 'tile-thumb' }, el('div', { class: 'tile-ph', html: icon('folder', 34) }), el('span', { class: 'tile-badge' }, count)), el('div', { class: 'tile-name no-tr' }, b.name));
+      bt.addEventListener('dblclick', () => { currentBin = b.id; renderContent(); });
+      bt.addEventListener('click', () => { currentBin = b.id; renderContent(); });
+      bt.addEventListener('dragover', (e) => { e.preventDefault(); bt.classList.add('drop-over'); });
+      bt.addEventListener('dragleave', () => bt.classList.remove('drop-over'));
+      bt.addEventListener('drop', (e) => { e.preventDefault(); bt.classList.remove('drop-over'); moveToBin(e, b.id); });
+      bt.addEventListener('contextmenu', (e) => { e.preventDefault(); contextMenu(e.clientX, e.clientY, [
+        { label: 'Abrir', onClick: () => { currentBin = b.id; renderContent(); } },
+        { label: 'Renomear', onClick: async () => { const n = await promptDialog(t('Renomear pasta'), b.name); if (n) { b.name = n; store.dirty = true; renderContent(); } } },
+        { label: 'Excluir pasta (mantém a mídia)', onClick: () => { store.p.media.forEach((m) => { if (m.binId === b.id) delete m.binId; }); store.p.bins = store.p.bins.filter((x) => x !== b); store.dirty = true; renderContent(); } },
+      ]); });
+      grid.append(bt);
+    }
+  }
+  for (const m of items) {
     const rt = runtime.get(m.id) || {};
     const used = store.p.clips.some((c) => c.mediaId === m.id);
+    const menu = (e) => contextMenu(e.clientX, e.clientY, [
+      { label: 'Adicionar à linha do tempo', onClick: () => addMedia(m) },
+      { label: 'Adicionar no cursor', onClick: () => addMedia(m, { t: store.time, trackId: null, newzone: 'top' }) },
+      m.type !== 'image' ? { label: 'Abrir no visualizador de origem', onClick: () => openSource(m) } : null,
+      { label: 'Mover para pasta', submenu: [{ label: t('Mídia') + ' (raiz)', onClick: () => { delete m.binId; store.dirty = true; renderContent(); } }, ...store.p.bins.map((b) => ({ label: b.name, checked: m.binId === b.id, onClick: () => { m.binId = b.id; store.dirty = true; renderContent(); } })), '-', { label: t('Nova pasta...'), onClick: () => newBin(m) }] },
+      isDesktop && m.path ? { label: 'Mostrar na pasta', onClick: () => api.showItem(m.path) } : null,
+      '-',
+      { label: t('Informações: {info}', { info: `${m.width ? m.width + '×' + m.height + ' · ' : ''}${fmtBytes(m.size)}` }), disabled: true },
+      { label: 'Remover do projeto', onClick: () => { store.begin(); store.p.clips = store.p.clips.filter((c) => c.mediaId !== m.id); store.p.media = store.p.media.filter((x) => x !== m); store.commit('rmmedia'); bus.emit('media'); } },
+    ]);
+    const srcBtn = m.type !== 'image' ? el('button', { class: 'tile-src', title: t('Abrir no visualizador de origem'), html: icon('eyePlay', 13) }) : null;
+    srcBtn?.addEventListener('click', (e) => { e.stopPropagation(); openSource(m); });
+    srcBtn?.addEventListener('dblclick', (e) => e.stopPropagation());
+    if (view === 'list') {
+      const row = el('div', { class: 'mrow' + (m.missing ? ' missing' : '') },
+        rt.thumb ? el('img', { class: 'mrow-thumb', src: rt.thumb, draggable: 'false' }) : el('span', { class: 'mrow-ic', html: icon(m.type === 'audio' ? 'music' : m.type === 'image' ? 'image' : 'video', 16) }),
+        el('div', { class: 'mrow-name no-tr', title: m.name }, m.name),
+        el('span', { class: 'muted small' }, m.type === 'image' ? (m.width ? `${m.width}×${m.height}` : '') : fmtShort(m.duration)),
+        used ? el('span', { class: 'tile-used static' }, '✓') : null,
+        srcBtn,
+        el('button', { class: 'icon-btn xs', title: 'Adicionar', onclick: (e) => { e.stopPropagation(); addMedia(m); }, html: icon('plus', 13) }));
+      row.addEventListener('dblclick', () => addMedia(m));
+      row.addEventListener('contextmenu', (e) => { e.preventDefault(); menu(e); });
+      setDrag(row, { kind: 'media', id: m.id });
+      grid.append(row);
+      continue;
+    }
     const thumb = rt.thumb ? el('img', { src: rt.thumb, draggable: 'false' }) : el('div', { class: 'tile-ph', html: icon(m.type === 'audio' ? 'music' : m.type === 'image' ? 'image' : 'video', 26) });
     grid.append(tile({
-      title: m.name, thumb, cls: m.missing ? 'missing' : '',
+      title: m.name, thumb, cls: (m.missing ? 'missing' : '') + ' no-tr-name',
       badge: m.type === 'image' ? null : fmtShort(m.duration),
-      extra: used ? el('span', { class: 'tile-used', title: 'Em uso' }, '✓') : null,
+      extra: [used ? el('span', { class: 'tile-used', title: 'Em uso' }, '✓') : null, srcBtn],
       onAdd: () => addMedia(m),
       drag: { kind: 'media', id: m.id },
-      onContext: (e) => contextMenu(e.clientX, e.clientY, [
-        { label: 'Adicionar à linha do tempo', onClick: () => addMedia(m) },
-        { label: 'Adicionar no cursor', onClick: () => addMedia(m, { t: store.time, trackId: null, newzone: 'top' }) },
-        isDesktop && m.path ? { label: 'Mostrar na pasta', onClick: () => api.showItem(m.path) } : null,
-        '-',
-        { label: t('Informações: {info}', { info: `${m.width ? m.width + '×' + m.height + ' · ' : ''}${fmtBytes(m.size)}` }), disabled: true },
-        { label: 'Remover do projeto', onClick: () => { store.begin(); store.p.clips = store.p.clips.filter((c) => c.mediaId !== m.id); store.p.media = store.p.media.filter((x) => x !== m); store.commit('rmmedia'); bus.emit('media'); } },
-      ]),
+      onContext: menu,
     }));
   }
   content.append(grid);
+}
+
+let currentBin = null;
+async function newBin(m) {
+  const n = await promptDialog(t('Nome da nova pasta'), t('Nova pasta'));
+  if (!n) return;
+  store.p.bins = store.p.bins || [];
+  const b = { id: 'bin_' + Date.now().toString(36), name: n };
+  store.p.bins.push(b);
+  if (m && m.id) m.binId = b.id;
+  store.dirty = true;
+  renderContent();
+}
+function moveToBin(e, binId) {
+  try {
+    const d = JSON.parse(e.dataTransfer.getData('application/x-astur') || '{}');
+    if (d.kind !== 'media') return;
+    const m = store.media(d.id);
+    if (!m) return;
+    if (binId) m.binId = binId; else delete m.binId;
+    store.dirty = true;
+    renderContent();
+  } catch {}
 }
 
 // ---------- Áudio ----------

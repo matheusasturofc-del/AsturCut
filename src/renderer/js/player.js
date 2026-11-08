@@ -4,6 +4,8 @@ import { $, el, icon, fmtTime, clamp, dragHandler, dropdownFrom } from './util.j
 import { renderFrame, activeAt, sourceTime, hasMedia } from './compositor.js';
 import { getPlayer, allPlayers, gcPlayers, audioCtx } from './media.js';
 import { settings } from './settings.js';
+import { valueAt, setValue, transformAt, localTime } from './keyframes.js';
+import { routePlayer } from './audiomix.js';
 
 export const player = {
   playing: false,
@@ -66,7 +68,7 @@ export function initPlayer() {
 
 function updateGridBtn() { $('#btn-grid')?.classList.toggle('on', !!settings.get('showGrid')); }
 function qualityLabel() { return { 1: 'Prévia: Máx', 0.5: 'Prévia: Média', 0.25: 'Prévia: Baixa' }[settings.get('previewQuality')] || 'Prévia'; }
-function aspectLabel() { return store.p.settings.aspect === 'original' ? 'Original' : store.p.settings.aspect; }
+function aspectLabel() { const s = store.p.settings; return s.aspect === 'original' ? 'Original' : s.aspect === 'custom' ? `${s.width}×${s.height}` : s.aspect; }
 
 function qualityMenu(e) {
   dropdownFrom(e.currentTarget, [1, 0.5, 0.25].map((q) => ({
@@ -171,11 +173,12 @@ export function syncMedia(t, playing) {
       const p = getPlayer(c);
       if (!p) continue;
       activeIds.add(c.id);
+      routePlayer(p, c.trackId);
       const lt = t - c.start;
       const target = sourceTime(c, lt);
       const el = p.el;
       // volume com fade
-      let vol = c.volume ?? 1;
+      let vol = valueAt(c, 'volume', clamp(lt, 0, c.duration));
       if (c.fadeIn > 0) vol *= clamp(lt / c.fadeIn, 0, 1);
       if (c.fadeOut > 0) vol *= clamp((c.duration - lt) / c.fadeOut, 0, 1);
       if (lt < 0 || lt > c.duration) vol = 0;
@@ -246,6 +249,9 @@ export function draw() {
 // ---------- Overlay de seleção (mover / escalar / girar no exibidor) ----------
 function setupOverlay(overlay) {
   overlay.addEventListener('pointerdown', (e) => {
+    if (player.pick && e.button === 0) { e.stopPropagation(); e.preventDefault(); samplePixel(e); }
+  }, true);
+  overlay.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     const { x, y } = toCanvas(e);
     const hit = player.hits.find((h) => pointInHit(h, x, y) && !store.track(store.clip(h.id)?.trackId)?.locked);
@@ -257,7 +263,7 @@ function setupOverlay(overlay) {
     const c = store.primarySelected();
     if (!c || !c.transform || !e.altKey) return;
     e.preventDefault();
-    store.updateClip(c.id, { transform: { scale: clamp(c.transform.scale * (e.deltaY < 0 ? 1.05 : 0.95), 0.02, 20) } }, { commit: false });
+    setValue(c, 'scale', clamp(transformAt(c, localTime(c)).scale * (e.deltaY < 0 ? 1.05 : 0.95), 0.02, 20)); store.touch();
     clearTimeout(overlay._wt); overlay._wt = setTimeout(() => store.commit('scale'), 300);
     store.begin();
   }, { passive: false });
@@ -274,9 +280,24 @@ function pointInHit(h, x, y) {
   return Math.abs(lx) <= Math.abs(h.w) / 2 && Math.abs(ly) <= Math.abs(h.h) / 2;
 }
 
+// conta-gotas: lê a cor média em volta do clique e chama player.pick(r,g,b)
+function samplePixel(e) {
+  const { x, y } = toCanvas(e);
+  const ctx = player.ctx;
+  const d = ctx.getImageData(Math.max(0, Math.round(x) - 3), Math.max(0, Math.round(y) - 3), 7, 7).data;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+  const cb = player.pick;
+  player.pick = null;
+  document.body.classList.remove('picking');
+  cb(r / n, g / n, b / n);
+}
+export function startPick(cb) { player.pick = cb; document.body.classList.add('picking'); }
+
 function startMove(e, id) {
   const c = store.clip(id);
-  const st = { x: c.transform.x, y: c.transform.y };
+  const cur = transformAt(c, localTime(c));
+  const st = { x: cur.x, y: cur.y };
   store.begin();
   const r = player.canvas.getBoundingClientRect();
   dragHandler(e, (ev, dx, dy) => {
@@ -285,7 +306,7 @@ function startMove(e, id) {
     guides.x = Math.abs(nx) < snap; guides.y = Math.abs(ny) < snap;
     if (guides.x && !ev.altKey) nx = 0;
     if (guides.y && !ev.altKey) ny = 0;
-    c.transform.x = nx; c.transform.y = ny;
+    setValue(c, 'x', nx); setValue(c, 'y', ny);
     store.touch();
   }, (ev, dx, dy) => {
     guides.x = guides.y = false;
@@ -330,11 +351,11 @@ function startScale(e, c, h, k) {
   const r = $('#canvas-overlay').getBoundingClientRect();
   const cx = r.left + h.cx * k, cy = r.top + h.cy * k;
   const d0 = Math.hypot(e.clientX - cx, e.clientY - cy) || 1;
-  const s0 = c.transform.scale;
+  const s0 = transformAt(c, localTime(c)).scale;
   store.begin();
   dragHandler(e, (ev) => {
     const d = Math.hypot(ev.clientX - cx, ev.clientY - cy);
-    c.transform.scale = clamp(s0 * (d / d0), 0.02, 20);
+    setValue(c, 'scale', clamp(s0 * (d / d0), 0.02, 20));
     store.touch();
   }, () => store.commit('scale'), 'nwse-resize');
 }
@@ -343,14 +364,14 @@ function startRotate(e, c, h, k) {
   const r = $('#canvas-overlay').getBoundingClientRect();
   const cx = r.left + h.cx * k, cy = r.top + h.cy * k;
   const a0 = Math.atan2(e.clientY - cy, e.clientX - cx);
-  const r0 = c.transform.rotation;
+  const r0 = transformAt(c, localTime(c)).rotation;
   store.begin();
   dragHandler(e, (ev) => {
     const a = Math.atan2(ev.clientY - cy, ev.clientX - cx);
     let deg = r0 + ((a - a0) * 180) / Math.PI;
     if (ev.shiftKey) deg = Math.round(deg / 15) * 15;
     else for (const s of [-180, -90, 0, 90, 180]) if (Math.abs(deg - s) < 3) deg = s;
-    c.transform.rotation = Math.round(deg * 10) / 10;
+    setValue(c, 'rotation', Math.round(deg * 10) / 10);
     store.touch();
   }, () => store.commit('rotate'), 'grabbing');
 }

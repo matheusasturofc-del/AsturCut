@@ -1,6 +1,7 @@
 // Tela "Personalizar": tema, cores, layout, editor e atalhos
 import { el, icon, modal, toast, confirmDialog } from './util.js';
 import { t, LANG, LANGS } from './i18n.js';
+import { ACTIONS, keysFor, setKeys, resetKeys, comboFrom } from './keymap.js';
 import { settings, THEMES, DEFAULTS, applyTheme } from './settings.js';
 import { LAYOUT_PRESETS, usePreset, applyLayout } from './layout.js';
 import { ASPECTS } from './store.js';
@@ -166,10 +167,41 @@ function editorPane(p) {
   void DEFAULTS;
 }
 
-function keysPane(p) {
-  p.append(el('h3', {}, 'Atalhos do teclado'));
+function keysPane(p, rerender) {
+  p.append(el('div', { class: 'row gap keys-head' }, el('h3', {}, 'Atalhos do teclado'), el('div', { class: 'grow' }),
+    el('button', { class: 'btn sm', onclick: async () => { if (await confirmDialog(t('Restaurar atalhos'), t('Voltar todos os atalhos ao padrão?'), t('Restaurar'))) { resetKeys(); rerender(); } } }, t('Restaurar padrão'))));
+  p.append(el('div', { class: 'muted small' }, t('Clique em uma tecla para trocar. Pressione a nova combinação (Esc cancela, Backspace remove).')));
   const tb = el('div', { class: 'keys' });
-  for (const [k, d] of SHORTCUTS) tb.append(el('div', { class: 'key-row' }, el('span', {}, d), el('kbd', {}, k)));
+  for (const [id, label] of ACTIONS) {
+    const keys = keysFor(id);
+    const chips = el('div', { class: 'key-chips' });
+    const draw = () => {
+      chips.innerHTML = '';
+      for (const k of keysFor(id)) chips.append(el('kbd', { class: 'key-edit', title: t('Clique para trocar'), onclick: (e) => capture(e.currentTarget, k) }, k));
+      chips.append(el('button', { class: 'key-add', title: t('Adicionar atalho'), onclick: (e) => capture(e.currentTarget, null) }, '+'));
+    };
+    const capture = (node, old) => {
+      node.textContent = t('Pressione...');
+      node.classList.add('capturing');
+      const onKey = (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (e.key === 'Escape') { done(); draw(); return; }
+        let list = keysFor(id).filter((x) => x !== old);
+        if (e.key !== 'Backspace' || !old) {
+          const combo = comboFrom(e);
+          if (!combo) return;
+          list = [...list, combo];
+        }
+        setKeys(id, list);
+        done(); rerender();
+      };
+      const done = () => document.removeEventListener('keydown', onKey, true);
+      document.addEventListener('keydown', onKey, true);
+    };
+    draw();
+    void keys;
+    tb.append(el('div', { class: 'key-row' }, el('span', {}, label), chips));
+  }
   p.append(tb);
 }
 

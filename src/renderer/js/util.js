@@ -152,7 +152,7 @@ export function contextMenu(x, y, items) {
     if (!it) continue;
     const row = el('div', { class: 'ctx-item' + (it.disabled ? ' disabled' : '') + (it.checked ? ' checked' : '') },
       el('span', { class: 'ctx-check' }, it.checked ? '✓' : ''),
-      el('span', { class: 'ctx-label' }, it.label),
+      el('span', { class: 'ctx-label' }, it.color ? el('i', { class: 'ctx-swatch', style: { background: it.color } }) : null, it.color ? it.label.replace('● ', '') : it.label),
       it.shortcut ? el('span', { class: 'ctx-short' }, it.shortcut) : null,
       it.submenu ? el('span', { class: 'ctx-short' }, '›') : null);
     if (it.submenu) {
@@ -175,7 +175,7 @@ export function contextMenu(x, y, items) {
     for (const s of sitems) {
       if (s === '-') { sub.append(el('div', { class: 'ctx-sep' })); continue; }
       sub.append(el('div', { class: 'ctx-item' + (s.checked ? ' checked' : ''), onclick: () => { closeMenus(); s.onClick && s.onClick(); } },
-        el('span', { class: 'ctx-check' }, s.checked ? '✓' : ''), el('span', { class: 'ctx-label' }, s.label)));
+        el('span', { class: 'ctx-check' }, s.checked ? '✓' : ''), el('span', { class: 'ctx-label' }, s.color ? el('i', { class: 'ctx-swatch', style: { background: s.color } }) : null, s.color ? s.label.replace('● ', '') : s.label)));
     }
     return sub;
   }
@@ -214,6 +214,18 @@ export function dragHandler(e, onMove, onUp, cursor) {
 const P = {
   home: '<path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  forward: '<path d="M4 5v14"/><path d="M8 12h12M15 7l5 5-5 5"/>',
+  ripple: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/><path d="M2 21h20" stroke-dasharray="2 2"/>',
+  mixer: '<path d="M6 4v16M12 4v16M18 4v16"/><rect x="4" y="13" width="4" height="3" rx="1" fill="currentColor"/><rect x="10" y="7" width="4" height="3" rx="1" fill="currentColor"/><rect x="16" y="10" width="4" height="3" rx="1" fill="currentColor"/>',
+  stopwatch: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/>',
+  diamond: '<path d="M12 3l9 9-9 9-9-9z"/>',
+  pipette: '<path d="M14 4l6 6-2 2-6-6zM12 8L4 16v4h4l8-8"/>',
+  compare: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/><path d="M12 4h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7z" fill="currentColor" opacity=".35"/>',
+  bin: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v4M10 13h4"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/>',
+  gridview: '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',
+  eyePlay: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><path d="M10 9l5 3-5 3z" fill="currentColor"/>',
+  maximize: '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
   media: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z" fill="currentColor"/>',
   audio: '<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>',
   music: '<path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',

@@ -7,6 +7,48 @@ import { FILTER_MAP, filterCss } from './lib/filters.js';
 import { TRANSITION_MAP } from './lib/transitions.js';
 import { clipAnimation } from './lib/animations.js';
 import { drawShape } from './lib/stickers.js';
+import { transformAt } from './keyframes.js';
+
+// clipes com "antes/depois" ativo (mostra sem correção de cor) — só em tempo de execução
+export const colorBypass = new Set();
+const NEUTRAL_ADJ = { brightness: 0, contrast: 0, saturation: 0, exposure: 0, temperature: 0, tint: 0, hue: 0, blur: 0, vignette: 0, sharpen: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0 };
+
+// curva de tons (realces, sombras, brancos, pretos) como filtro SVG reutilizável
+const toneCache = new Map();
+let toneSvg = null;
+function toneFilter(a) {
+  const h = a.highlights || 0, sh = a.shadows || 0, w = a.whites || 0, b = a.blacks || 0;
+  if (!h && !sh && !w && !b) return '';
+  const key = `${h}_${sh}_${w}_${b}`;
+  if (toneCache.has(key)) return toneCache.get(key);
+  if (!toneSvg) {
+    toneSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    toneSvg.setAttribute('width', '0'); toneSvg.setAttribute('height', '0');
+    toneSvg.style.position = 'absolute';
+    document.body.append(toneSvg);
+  }
+  const g = (x, c, wd) => Math.exp(-((x - c) ** 2) / (2 * wd * wd));
+  const vals = [];
+  for (let i = 0; i <= 32; i++) {
+    const x = i / 32;
+    let y = x + 0.22 * ((sh / 100) * g(x, 0.28, 0.16) + (h / 100) * g(x, 0.72, 0.16)) + 0.16 * ((b / 100) * g(x, 0.02, 0.1) + (w / 100) * g(x, 0.98, 0.1));
+    vals.push(Math.min(1, Math.max(0, y)).toFixed(4));
+  }
+  const id = 'tone_' + toneCache.size;
+  const f = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+  f.setAttribute('id', id);
+  f.setAttribute('color-interpolation-filters', 'sRGB');
+  const ct = document.createElementNS('http://www.w3.org/2000/svg', 'feComponentTransfer');
+  for (const ch of ['R', 'G', 'B']) {
+    const fn = document.createElementNS('http://www.w3.org/2000/svg', 'feFunc' + ch);
+    fn.setAttribute('type', 'table'); fn.setAttribute('tableValues', vals.join(' '));
+    ct.append(fn);
+  }
+  f.append(ct); toneSvg.append(f);
+  const css = `url(#${id})`;
+  toneCache.set(key, css);
+  return css;
+}
 
 const layers = [];
 function layer(i, W, H) {
@@ -71,6 +113,8 @@ function adjustCss(a) {
   if (a.saturation) p.push(`saturate(${(1 + a.saturation / 100).toFixed(3)})`);
   if (a.hue) p.push(`hue-rotate(${(a.hue * 1.8).toFixed(1)}deg)`);
   if (a.sharpen > 0) p.push(`url(#sharpen${a.sharpen > 66 ? 3 : a.sharpen > 33 ? 2 : 1})`);
+  const tone = toneFilter(a);
+  if (tone) p.push(tone);
   return p.join(' ');
 }
 
@@ -174,10 +218,13 @@ function renderClip(idx, clip, t, W, H, S, hits) {
   const anim = clipAnimation(clip, ltc);
   const st = { filter: [], dx: 0, dy: 0, scale: 1, rot: 0, alpha: 1, S, prog: ltc / Math.max(0.01, clip.duration) };
   for (const e of clip.effects) { const def = EFFECT_MAP[e.id]; if (def?.pre) def.pre(st, ltc, e.intensity ?? 0.6); }
-  const tr = clip.transform;
-  const filters = [adjustCss(clip.adjust)];
-  if (clip.adjust.blur) filters.push(`blur(${(clip.adjust.blur / 100 * 20 * S).toFixed(1)}px)`);
-  if (clip.filter && FILTER_MAP[clip.filter.id]) filters.push(filterCss(FILTER_MAP[clip.filter.id], clip.filter.intensity ?? 1));
+  const tr = transformAt(clip, ltc);
+  const bypass = colorBypass.has(clip.id);
+  const adj = bypass ? NEUTRAL_ADJ : clip.adjust;
+  const flt = bypass ? null : clip.filter;
+  const filters = [adjustCss(adj)];
+  if (adj.blur) filters.push(`blur(${(adj.blur / 100 * 20 * S).toFixed(1)}px)`);
+  if (flt && FILTER_MAP[flt.id]) filters.push(filterCss(FILTER_MAP[flt.id], flt.intensity ?? 1));
   filters.push(...st.filter);
   if (anim.blur > 0) filters.push(`blur(${(anim.blur * S).toFixed(1)}px)`);
   const filterStr = filters.filter(Boolean).join(' ') || 'none';
@@ -227,9 +274,9 @@ function renderClip(idx, clip, t, W, H, S, hits) {
   ctx.restore();
 
   for (const e of clip.effects) { const def = EFFECT_MAP[e.id]; if (def?.post) def.post(ctx, W, H, ltc, e.intensity ?? 0.6, S); }
-  applyAdjustPost(ctx, W, H, clip.adjust);
-  if (clip.filter && FILTER_MAP[clip.filter.id]) {
-    const f = FILTER_MAP[clip.filter.id], k = clip.filter.intensity ?? 1;
+  applyAdjustPost(ctx, W, H, adj);
+  if (flt && FILTER_MAP[flt.id]) {
+    const f = FILTER_MAP[flt.id], k = flt.intensity ?? 1;
     if (f.overlay) tint(ctx, W, H, f.overlay[0], f.overlay[1], f.overlay[2] * k);
     if (f.overlay2) tint(ctx, W, H, f.overlay2[0], f.overlay2[1], f.overlay2[2] * k);
   }
@@ -296,7 +343,7 @@ export function renderFrame(main, t, hits = null) {
       try { def.render(tctx, withAlpha(a, 4, W, H), withAlpha(b, 5, W, H), clamp(p, 0, 1), W, H); } catch (e) { console.warn(e); }
       tctx.restore();
       main.drawImage(tl, 0, 0);
-      if (hits) { const c = p < 0.5 ? A : B; hits.push(hitFor(c, W, H, S, main)); }
+      if (hits) { const c = p < 0.5 ? A : B; hits.push(hitFor(c, W, H, S, main, t)); }
       for (const c of vis) if (c !== A && c !== B) compose(main, renderClip(0, c, t, W, H, S, hits));
       continue;
     }
@@ -325,8 +372,8 @@ function compose(main, r) {
   main.restore();
 }
 
-function hitFor(clip, W, H, S, ctx) {
-  const tr = clip.transform;
+function hitFor(clip, W, H, S, ctx, t) {
+  const tr = transformAt(clip, clamp(t - clip.start, 0, clip.duration));
   const size = contentSize(clip, W, H, S, ctx);
   return { id: clip.id, cx: W / 2 + tr.x * W, cy: H / 2 + tr.y * H, w: size.w * tr.scale, h: size.h * tr.scale, rot: tr.rotation, W, H };
 }

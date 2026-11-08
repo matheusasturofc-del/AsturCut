@@ -86,11 +86,18 @@ function skipped(n) {
 }
 function translateTree(root) {
   if (root.nodeType === 3) { if (!skipped(root)) trText(root); return; }
+  if (root.nodeType === 1 && (root.nodeName === 'INPUT' || root.nodeName === 'TEXTAREA')) { trAttrs(root); return; }
   if (root.nodeType !== 1 || SKIP.has(root.nodeName) || root.classList?.contains('no-tr')) return;
   if (skipped(root)) return;
   trAttrs(root);
   const w = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => (n.nodeType === 1 && (SKIP.has(n.nodeName) || n.classList?.contains('no-tr')) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    acceptNode: (n) => {
+      if (n.nodeType === 1 && (SKIP.has(n.nodeName) || n.classList?.contains('no-tr'))) {
+        if (n.nodeName === 'INPUT' || n.nodeName === 'TEXTAREA') trAttrs(n);
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
   });
   let n;
   while ((n = w.nextNode())) { if (n.nodeType === 3) trText(n); else trAttrs(n); }
