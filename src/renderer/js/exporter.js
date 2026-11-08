@@ -3,6 +3,7 @@ import { store } from './store.js';
 import { t } from './i18n.js';
 import { el, icon, modal, toast, fmtTime, fmtBytes, promptDialog } from './util.js';
 import { fastSupported, fastExport, clearDecoded } from './fastExport.js';
+import { prepareKeying } from './keying.js';
 import { renderFrame } from './compositor.js';
 import { player, pause, syncMedia, draw } from './player.js';
 import { allPlayers, exportAudioStream, audioCtx, isDesktop, api } from './media.js';
@@ -149,6 +150,7 @@ async function startExport(o) {
     outPath = await api.exportChoose({ name: o.name, format: o.format });
     if (!outPath) return;
   }
+  try { await prepareKeying(store.p.clips); } catch { toast(t('Não foi possível carregar a IA de recorte'), 'error'); }
   audioCtx();
   const canvas = document.createElement('canvas');
   canvas.width = o.W; canvas.height = o.H;

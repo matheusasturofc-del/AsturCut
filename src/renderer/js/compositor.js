@@ -8,6 +8,7 @@ import { TRANSITION_MAP } from './lib/transitions.js';
 import { clipAnimation } from './lib/animations.js';
 import { drawShape } from './lib/stickers.js';
 import { transformAt } from './keyframes.js';
+import { needsKeying, keyFrame } from './keying.js';
 
 // clipes com "antes/depois" ativo (mostra sem correção de cor) — só em tempo de execução
 export const colorBypass = new Set();
@@ -290,13 +291,16 @@ function renderClip(idx, clip, t, W, H, S, hits) {
   ctx.scale(sc * anim.sx * (tr.flipH ? -1 : 1), sc * anim.sy * (tr.flipV ? -1 : 1));
   ctx.filter = filterStr;
   if (clip.type === 'video' || clip.type === 'image') {
-    if (src) {
+    let img = src;
+    if (src && needsKeying(clip)) { const kf = keyFrame(clip, src, size.mw, size.mh); if (kf && kf !== 'wait') img = kf; }
+    if (img) {
       const cr = clip.crop;
       if (cr && (cr.l || cr.r || cr.t || cr.b)) {
         const sx = cr.l * size.mw, sy = cr.t * size.mh, sw = size.mw * (1 - cr.l - cr.r), sh = size.mh * (1 - cr.t - cr.b);
         const k = size.w / size.mw;
-        ctx.drawImage(src, sx, sy, sw, sh, -size.w / 2 + sx * k, -size.h / 2 + sy * k, sw * k, sh * k);
-      } else ctx.drawImage(src, -size.w / 2, -size.h / 2, size.w, size.h);
+        const r = img === src ? 1 : img.width / size.mw;
+        ctx.drawImage(img, sx * r, sy * r, sw * r, sh * r, -size.w / 2 + sx * k, -size.h / 2 + sy * k, sw * k, sh * k);
+      } else ctx.drawImage(img, -size.w / 2, -size.h / 2, size.w, size.h);
     }
   } else if (clip.type === 'text') {
     drawText(ctx, clip.text, S, anim, ltc);

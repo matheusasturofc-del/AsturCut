@@ -1,7 +1,7 @@
 // Painel de propriedades (Detalhes / Vídeo / Texto / Áudio / Velocidade / Animação / Ajuste / Efeitos)
 import { store, bus, ASPECTS, defaultAdjust } from './store.js';
 import { t } from './i18n.js';
-import { $, el, icon, fmtTime, fmtShort, clamp, promptDialog } from './util.js';
+import { $, el, icon, fmtTime, fmtShort, clamp, promptDialog, toast } from './util.js';
 import { settings } from './settings.js';
 import { FONTS } from './library.js';
 import { customFonts, isDesktop, api } from './media.js';
@@ -13,6 +13,7 @@ import { setSpeed } from './timeline.js';
 import { setAspect } from './player.js';
 import { openTab } from './library.js';
 import { player, startPick } from './player.js';
+import { DEFAULT_CHROMA, DEFAULT_CUTOUT, cutoutState, ensureSegmenter, keyBypass } from './keying.js';
 import { hasKf, anyKf, valueAt, setValue, toggleAnim, toggleKey, keyAtCursor, jumpKey, localTime, EASINGS, setEaseAtCursor, easeAtCursor } from './keyframes.js';
 import { colorBypass } from './compositor.js';
 import { whiteBalanceFrom, applyColorToMedia, copyAttributes, pasteAttributesDialog, hasAttributes, gainDialog, speedDialog, toDb } from './editTools.js';
@@ -266,9 +267,44 @@ function basicTab(c) {
       slider('Cortar base', Math.round(cr.b * 100), { min: 0, max: 90, unit: '%', def: 0, onInput: (v) => upd(c, { crop: { ...cr, ...(c.crop || {}), b: v / 100 } }) }),
     ));
   }
+  if (media) bodyEl.append(keyingSection(c));
   bodyEl.append(section('Mistura',
     select('Modo:', c.blend, [['source-over', 'Normal'], ['multiply', 'Multiplicar'], ['screen', 'Tela'], ['overlay', 'Sobrepor'], ['darken', 'Escurecer'], ['lighten', 'Clarear'], ['color-dodge', 'Subexposição de cor'], ['color-burn', 'Superexposição de cor'], ['hard-light', 'Luz forte'], ['soft-light', 'Luz suave'], ['difference', 'Diferença'], ['exclusion', 'Exclusão'], ['hue', 'Matiz'], ['saturation', 'Saturação'], ['color', 'Cor'], ['luminosity', 'Luminosidade']], (v) => updC(c, { blend: v })),
   ));
+}
+
+// remover fundo: IA (pessoa) e chroma key
+function keyingSection(c) {
+  const cu = { ...DEFAULT_CUTOUT, ...(c.cutout || {}) };
+  const ch = { ...DEFAULT_CHROMA, ...(c.chroma || {}) };
+  const state = cutoutState();
+  const pick = () => {
+    keyBypass.add(c.id); player.needsRender = true;
+    toast(t('Clique na cor do fundo no vídeo'), 'info', 2500);
+    startPick((r, g, b) => {
+      keyBypass.delete(c.id);
+      const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+      updC(c, { chroma: { on: true, color: hex } });
+    });
+  };
+  const presets = el('div', { class: 'btn-row' },
+    el('button', { class: 'btn sm', onclick: () => updC(c, { chroma: { on: true, color: '#00ff00' } }) }, t('Verde')),
+    el('button', { class: 'btn sm', onclick: () => updC(c, { chroma: { on: true, color: '#0047ff' } }) }, t('Azul')),
+    el('button', { class: 'btn sm', title: t('Clique no conta-gotas e depois no fundo do vídeo'), onclick: pick, html: icon('pipette', 13) + `<span>${t('Pegar cor')}</span>` }));
+  return section('Remover fundo',
+    toggle('Recortar pessoa (IA)', cu.on, (v) => { updC(c, { cutout: { on: v } }); if (v) ensureSegmenter().then(() => render()).catch(() => { toast(t('Não foi possível carregar a IA de recorte'), 'error'); render(); }); }),
+    cu.on && state === 'loading' ? el('div', { class: 'muted small' }, t('Carregando a IA de recorte...')) : null,
+    cu.on && state === 'error' ? el('div', { class: 'muted small' }, t('Não foi possível carregar a IA de recorte')) : null,
+    cu.on ? slider('Ajuste da borda', Math.round(cu.edge * 100), { min: 10, max: 90, def: 50, onInput: (v) => upd(c, { cutout: { edge: v / 100 } }) }) : null,
+    cu.on ? slider('Suavizar borda', Math.round(cu.feather * 100), { min: 1, max: 40, def: 15, onInput: (v) => upd(c, { cutout: { feather: v / 100 } }) }) : null,
+    cu.on ? el('div', { class: 'muted small' }, t('Funciona melhor com uma pessoa em primeiro plano. Coloque outro vídeo ou imagem na trilha de baixo para trocar o fundo.')) : null,
+    toggle('Chroma key (tela verde/azul)', ch.on, (v) => updC(c, { chroma: { on: v } })),
+    ch.on ? row('Cor do fundo:', el('input', { type: 'color', class: 'color', value: ch.color, onchange: (e) => updC(c, { chroma: { color: e.target.value } }) }), el('span', { class: 'muted small mono' }, ch.color)) : null,
+    ch.on ? presets : null,
+    ch.on ? slider('Intensidade', Math.round(ch.similarity * 100), { min: 1, max: 100, def: 40, onInput: (v) => upd(c, { chroma: { similarity: v / 100 } }) }) : null,
+    ch.on ? slider('Suavidade', Math.round(ch.smoothness * 100), { min: 1, max: 60, def: 8, onInput: (v) => upd(c, { chroma: { smoothness: v / 100 } }) }) : null,
+    ch.on ? slider('Tirar reflexo da cor', Math.round(ch.spill * 100), { min: 1, max: 60, def: 10, onInput: (v) => upd(c, { chroma: { spill: v / 100 } }) }) : null,
+  );
 }
 
 function fontOptions() {
