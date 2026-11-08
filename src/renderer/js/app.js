@@ -215,12 +215,15 @@ async function boot() {
   applyTheme();
   buildTitlebar();
   initLayout();
+  window.astur?.bootStep?.('library');
   await initLibrary();
   initPlayer();
   initTimeline();
   initInspector();
   startAutoTranslate();
-  loadUserFonts();
+  window.astur?.bootStep?.('fonts');
+  await Promise.race([loadUserFonts(), new Promise((r) => setTimeout(r, 2500))]);
+  window.astur?.bootStep?.('almost');
   if (isDesktop) startUpdateChecks();
   bus.on('change', () => { updateTitle(); scheduleRecovery(); });
   bus.on('project', updateTitle);
@@ -235,9 +238,12 @@ async function boot() {
       if (player.exporting && !(await confirmDialog(t('Exportação em andamento'), t('Fechar e cancelar a exportação?'), t('Fechar'), true))) return;
       if (await confirmDiscard()) { clearRecovery(); api.forceClose(); }
     });
-    if (info.openFile) { showHome(); await openProject(info.openFile); return; }
+    if (info.openFile) { showHome(); window.astur.ready(); await openProject(info.openFile); return; }
   }
   showHome();
+  // espera as fontes da interface antes de mostrar a janela
+  await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1500))]);
+  window.astur?.ready?.();
 }
 boot();
 window.__app = { store, settings, openTab, showHome };

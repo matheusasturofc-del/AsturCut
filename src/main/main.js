@@ -87,6 +87,42 @@ function handleMediaProtocol() {
   });
 }
 
+// ---------- Janela de carregamento ----------
+let splash = null;
+const splashStart = Date.now();
+const SPLASH_TEXT = {
+  pt: { start: 'Preparando…', loading: 'Carregando a interface…', library: 'Organizando a biblioteca…', fonts: 'Carregando fontes…', almost: 'Quase pronto…', ready: 'Pronto!' },
+  en: { start: 'Getting ready…', loading: 'Loading the interface…', library: 'Organizing the library…', fonts: 'Loading fonts…', almost: 'Almost there…', ready: 'Ready!' },
+  es: { start: 'Preparando…', loading: 'Cargando la interfaz…', library: 'Organizando la biblioteca…', fonts: 'Cargando fuentes…', almost: 'Casi listo…', ready: '¡Listo!' },
+};
+const SPLASH_PROGRESS = { start: 0.08, loading: 0.3, library: 0.55, fonts: 0.75, almost: 0.9, ready: 1 };
+function savedLang() {
+  try { const l = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'lang.json'), 'utf8')).lang; if (SPLASH_TEXT[l]) return l; } catch {}
+  const inst = installerLang(); if (inst) return inst;
+  const loc = (app.getLocale() || 'pt').slice(0, 2);
+  return SPLASH_TEXT[loc] ? loc : 'en';
+}
+function createSplash() {
+  const l = savedLang();
+  splash = new BrowserWindow({
+    width: 440, height: 290, frame: false, resizable: false, movable: true, show: false, center: true,
+    backgroundColor: '#141416', skipTaskbar: false, alwaysOnTop: false, title: 'AsturCut',
+    icon: path.join(__dirname, '..', '..', 'build', 'icon.png'),
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  splash.loadFile(path.join(__dirname, 'splash.html'), { query: { v: app.getVersion(), s: SPLASH_TEXT[l].start } });
+  splash.once('ready-to-show', () => splash && splash.show());
+  splash.on('closed', () => { splash = null; });
+}
+function splashStatus(step) {
+  if (!splash || splash.isDestroyed()) return;
+  const l = savedLang();
+  const text = (SPLASH_TEXT[l] || SPLASH_TEXT.pt)[step] || step;
+  splash.webContents.executeJavaScript(`window.setStatus && window.setStatus(${JSON.stringify(text)}, ${SPLASH_PROGRESS[step] ?? 'null'})`).catch(() => {});
+}
+function closeSplash() { if (splash && !splash.isDestroyed()) splash.close(); splash = null; }
+ipcMain.on('app:boot-step', (_e, step) => splashStatus(step));
+
 // ---------- Janela ----------
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -110,10 +146,21 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  win.once('ready-to-show', () => {
-    win.show();
-    if (width > 1700) win.maximize();
-  });
+  splashStatus('loading');
+  const reveal = () => {
+    if (!win || win.isVisible()) return;
+    const wait = Math.max(0, 1300 - (Date.now() - splashStart));
+    setTimeout(() => {
+      if (!win) return;
+      splashStatus('ready');
+      win.show();
+      if (width > 1700) win.maximize();
+      setTimeout(closeSplash, 250);
+    }, wait);
+  };
+  // mostra quando a interface avisar que terminou de carregar (ou depois de 15 s, por segurança)
+  ipcMain.once('app:ready', reveal);
+  setTimeout(reveal, 15000);
   if (isDev) win.webContents.openDevTools({ mode: 'detach' });
   win.on('maximize', () => win.webContents.send('win:state', { maximized: true }));
   win.on('unmaximize', () => win.webContents.send('win:state', { maximized: false }));
@@ -147,6 +194,7 @@ if (!gotLock) {
   app.whenReady().then(() => {
     pendingOpenFile = fileFromArgv(process.argv);
     handleMediaProtocol();
+    createSplash();
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
@@ -168,7 +216,11 @@ ipcMain.handle('app:info', () => ({
   openFile: pendingOpenFile,
   installerLang: installerLang(),
 }));
-ipcMain.on('app:set-lang', (_e, l) => { if (L[l]) lang = l; });
+ipcMain.on('app:set-lang', (_e, l) => {
+  if (!L[l]) return;
+  lang = l;
+  try { fs.writeFileSync(path.join(app.getPath('userData'), 'lang.json'), JSON.stringify({ lang: l })); } catch {}
+});
 
 // ---------- Atualizações: consulta a última versão publicada no GitHub ----------
 const UPDATE_REPO = 'matheusasturofc-del/AsturCut';
@@ -332,5 +384,76 @@ ipcMain.handle('export:end', async (e, opts) => {
     proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(tr('ffmpegFail') + log.slice(-600)))));
   });
   fs.promises.unlink(job.tmp).catch(() => {});
+  return outPath;
+});
+
+// ---------- IPC: exportação rápida (H.264 do WebCodecs + WAV mixado offline) ----------
+let fxJob = null;
+function fxCleanup(job) {
+  if (!job) return;
+  try { job.stream.destroy(); } catch {}
+  for (const f of [job.video, job.audio]) fs.promises.unlink(f).catch(() => {});
+}
+
+ipcMain.handle('fx:begin', async () => {
+  fxCleanup(fxJob);
+  const base = path.join(os.tmpdir(), `asturcut-fx-${Date.now()}`);
+  fxJob = { video: base + '.h264', audio: base + '.wav', stream: fs.createWriteStream(base + '.h264'), bytes: 0 };
+  return true;
+});
+
+ipcMain.handle('fx:video', async (_e, buf) => {
+  if (!fxJob) return false;
+  const b = Buffer.from(buf);
+  fxJob.bytes += b.length;
+  if (!fxJob.stream.write(b)) await new Promise((res) => fxJob.stream.once('drain', res));
+  return true;
+});
+
+ipcMain.handle('fx:audio', async (_e, buf) => {
+  if (!fxJob) return false;
+  await fs.promises.writeFile(fxJob.audio, Buffer.from(buf));
+  return true;
+});
+
+ipcMain.handle('fx:end', async (e, opts) => {
+  const job = fxJob;
+  fxJob = null;
+  if (!job) throw new Error(tr('noExport'));
+  await new Promise((res) => job.stream.end(res));
+  if (opts.cancel) { fxCleanup(job); return null; }
+  const { outPath, format, quality = 'high', fps = 30, duration = 0 } = opts;
+  const crf = { low: 34, medium: 30, high: 26, max: 20 }[quality] || 28;
+  const vIn = ['-f', 'h264', '-r', String(fps), '-i', job.video];
+  const len = duration > 0 ? ['-t', duration.toFixed(3)] : ['-shortest'];
+  const aIn = ['-i', job.audio];
+  let args;
+  if (format === 'mp3') {
+    args = ['-y', ...aIn, '-c:a', 'libmp3lame', '-b:a', '320k', outPath];
+  } else if (format === 'gif') {
+    args = ['-y', ...vIn, '-vf', `fps=${Math.min(fps, 20)},scale=640:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse`, outPath];
+  } else if (format === 'webm') {
+    args = ['-y', ...vIn, ...aIn, '-map', '0:v', '-map', '1:a', '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', String(crf), '-deadline', 'realtime', '-cpu-used', '8', '-row-mt', '1',
+      '-c:a', 'libopus', '-b:a', '192k', ...len, outPath];
+  } else {
+    args = ['-y', ...vIn, ...aIn, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', ...len, '-movflags', '+faststart', outPath];
+  }
+  if (process.env.ASTUR_DEBUG) console.log('[fx]', args.join(' '), fs.existsSync(job.audio) && fs.statSync(job.audio).size, job.bytes);
+  try {
+    await new Promise((resolve, reject) => {
+      const proc = spawn(ffmpegPath(), args, { windowsHide: true });
+      let log = '';
+      proc.stderr.on('data', (d) => {
+        const s = d.toString();
+        log = (log + s).slice(-4000);
+        const m = /time=(\d+):(\d+):(\d+\.\d+)/.exec(s);
+        if (m && duration > 0) e.sender.send('export:progress', Math.min(1, (+m[1] * 3600 + +m[2] * 60 + +m[3]) / duration));
+      });
+      proc.on('error', reject);
+      proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(tr('ffmpegFail') + log.slice(-600)))));
+    });
+  } finally {
+    fxCleanup(job);
+  }
   return outPath;
 });

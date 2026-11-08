@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:" />
+<title>AsturCut</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #141416; font-family: 'Segoe UI', system-ui, sans-serif; color: #fff; user-select: none; -webkit-app-region: drag; }
+  .wrap { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+  .bg { position: absolute; inset: 0; background:
+    radial-gradient(120% 90% at 0% 0%, rgba(28,207,220,.35), transparent 55%),
+    radial-gradient(110% 90% at 100% 100%, rgba(91,43,255,.45), transparent 60%); }
+  .logo { position: relative; width: 84px; height: 84px; filter: drop-shadow(0 8px 30px rgba(28,207,220,.55)); animation: pop .6s cubic-bezier(.2,1.4,.4,1) both; }
+  .name { position: relative; font-size: 30px; font-weight: 800; letter-spacing: .3px; animation: fade .6s .15s both; }
+  .status { position: relative; font-size: 13px; color: rgba(255,255,255,.7); height: 18px; animation: fade .6s .25s both; }
+  .bar { position: relative; width: 220px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; animation: fade .6s .3s both; }
+  .bar i { position: absolute; top: 0; bottom: 0; width: 0; border-radius: 4px; background: linear-gradient(90deg, #1ccfdc, #5b2bff); transition: width .35s ease; }
+  .bar b { position: absolute; top: 0; bottom: 0; width: 60px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent); animation: shine 1.2s infinite; }
+  .ver { position: absolute; bottom: 12px; right: 16px; font-size: 11px; color: rgba(255,255,255,.35); }
+  @keyframes pop { from { transform: scale(.6); opacity: 0; } }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } }
+  @keyframes shine { from { left: -60px; } to { left: 220px; } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bg"></div>
+    <img class="logo" src="../renderer/assets/logo.svg" alt="" />
+    <div class="name">AsturCut</div>
+    <div class="status" id="status">Preparando…</div>
+    <div class="bar"><i id="fill"></i><b></b></div>
+    <div class="ver" id="ver"></div>
+  </div>
+<script>
+  const q = new URLSearchParams(location.search);
+  document.getElementById('ver').textContent = 'v' + (q.get('v') || '');
+  const first = q.get('s'); if (first) document.getElementById('status').textContent = first;
+  window.setStatus = (text, p) => {
+    if (text) document.getElementById('status').textContent = text;
+    if (p != null) document.getElementById('fill').style.width = Math.round(p * 100) + '%';
+  };
+  window.setStatus(null, 0.08);
+</script>
+</body>
+</html>

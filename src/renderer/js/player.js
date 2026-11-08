@@ -184,13 +184,13 @@ export function syncMedia(t, playing) {
       if (lt < 0 || lt > c.duration) vol = 0;
       if (tr.muted || (c.type === 'video' && tr.hidden && false)) vol = 0;
       if (p.gain) p.gain.gain.value = vol; else el.volume = clamp(vol, 0, 1);
-      const rate = clamp(c.speed || 1, 0.0625, 16);
+      const rate = clamp((c.speed || 1) * (player.rateMul || 1), 0.0625, 16);
       if (Math.abs(el.playbackRate - rate) > 0.001) el.playbackRate = rate;
       el.preservesPitch = !c.changePitch;
       const inRange = lt >= 0 && lt < c.duration;
       if (playing && inRange) {
         if (el.paused) { if (Math.abs(el.currentTime - target) > 0.05) el.currentTime = target; el.play().catch(() => {}); }
-        else if (Math.abs(el.currentTime - target) > 0.3) el.currentTime = target;
+        else if (Math.abs(el.currentTime - target) > 0.3 * (player.rateMul || 1)) el.currentTime = target;
       } else {
         if (!el.paused) el.pause();
         if (Math.abs(el.currentTime - target) > 0.5 / store.p.settings.fps && !p.seeking) { p.seeking = true; el.currentTime = target; }

@@ -31,7 +31,7 @@ export const PRESETS = {
 // ---------- Grafo de áudio ----------
 const buses = new Map(); // trackId -> nós
 let gateReady = null;
-const GATE_CODE = `
+export const GATE_CODE = `
 class AsturGate extends AudioWorkletProcessor {
   static get parameterDescriptors() { return [{ name: 'amount', defaultValue: 0, minValue: 0, maxValue: 1 }]; }
   constructor() { super(); this.env = 0; this.g = 1; }

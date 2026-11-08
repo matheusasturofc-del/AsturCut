@@ -1,7 +1,8 @@
 // Exportação de vídeo (gravação em tempo real do compositor + conversão com FFmpeg no desktop)
 import { store } from './store.js';
 import { t } from './i18n.js';
-import { el, icon, modal, toast, fmtTime, fmtBytes } from './util.js';
+import { el, icon, modal, toast, fmtTime, fmtBytes, promptDialog } from './util.js';
+import { fastSupported, fastExport } from './fastExport.js';
 import { renderFrame } from './compositor.js';
 import { player, pause, syncMedia, draw } from './player.js';
 import { allPlayers, exportAudioStream, audioCtx, isDesktop, api } from './media.js';
@@ -9,11 +10,24 @@ import { settings } from './settings.js';
 
 const RES = [[480, '480p'], [720, '720p'], [1080, '1080p'], [1440, '2K'], [2160, '4K']];
 
+// predefinições de exportação
+const PRESETS = [
+  { id: 'yt1080', name: 'YouTube 1080p', res: 1080, format: 'mp4', quality: 'high' },
+  { id: 'yt4k', name: 'YouTube 4K', res: 2160, format: 'mp4', quality: 'high' },
+  { id: 'vertical', name: 'Reels / TikTok / Shorts', res: 1080, fps: 30, format: 'mp4', quality: 'high', aspect: '9:16' },
+  { id: 'insta', name: 'Instagram feed', res: 1080, fps: 30, format: 'mp4', quality: 'medium' },
+  { id: 'whats', name: 'WhatsApp (leve)', res: 720, fps: 30, format: 'mp4', quality: 'low' },
+  { id: 'gif', name: 'GIF', res: 480, fps: 24, format: 'gif', quality: 'medium' },
+  { id: 'mp3', name: 'Somente áudio', format: 'mp3' },
+];
+
 export function openExportDialog() {
   const dur = store.duration();
   if (dur <= 0) { toast('A linha do tempo está vazia — adicione clipes antes de exportar.', 'error'); return; }
   pause();
   const st = store.p.settings;
+  const fast = fastSupported();
+  const last = settings.get('exportLast') || {};
   const opts = {
     name: store.p.name || 'video',
     res: Math.min(st.width, st.height) >= 1080 ? 1080 : Math.min(st.width, st.height),
@@ -21,6 +35,7 @@ export function openExportDialog() {
     format: isDesktop ? 'mp4' : 'webm',
     quality: 'high',
     range: 'all',
+    mode: fast ? (last.mode || 'fast') : 'realtime',
   };
   const rg = store.p.range;
   const hasRange = rg && (rg.in != null || rg.out != null);
@@ -28,44 +43,94 @@ export function openExportDialog() {
   if (hasRange) opts.range = 'io';
   const expDur = () => (opts.range === 'io' ? Math.max(0.1, rOut - rIn) : dur);
   const est = el('div', { class: 'muted small' });
+  const warn = el('div', { class: 'exp-warn small', style: { display: 'none' } });
   const sizeFor = () => {
     const k = Math.min(st.width, st.height);
     const W = Math.round(st.width * opts.res / k / 2) * 2, H = Math.round(st.height * opts.res / k / 2) * 2;
     return { W, H };
   };
+  const note = el('span', {});
+  let activePreset = null;
   const updateEst = () => {
     const { W, H } = sizeFor();
     const mbps = bitrate(W, H, opts.quality) / 1e6;
-    est.textContent = t('{w}×{h} · {fps} fps · duração {d} · tamanho estimado ~{size}', { w: W, h: H, fps: opts.fps, d: fmtTime(expDur(), opts.fps), size: fmtBytes(mbps * 1e6 / 8 * expDur() * (opts.format === 'mp4' ? 0.7 : 1)) });
+    est.textContent = opts.format === 'mp3'
+      ? t('Somente áudio · duração {d}', { d: fmtTime(expDur(), opts.fps) })
+      : t('{w}×{h} · {fps} fps · duração {d} · tamanho estimado ~{size}', { w: W, h: H, fps: opts.fps, d: fmtTime(expDur(), opts.fps), size: fmtBytes(mbps * 1e6 / 8 * expDur() * (opts.format === 'mp4' ? 0.7 : 1)) });
+    note.textContent = t(opts.mode === 'fast'
+      ? 'Modo rápido: o áudio é mixado na hora e o vídeo é codificado direto pela placa de vídeo quando possível.'
+      : 'A exportação é feita em tempo real: deixe o AsturCut aberto até terminar.');
+    for (const b of presetRow.children) b.classList.toggle('on', b.dataset.id === activePreset);
   };
   const field = (label, ctrl) => el('div', { class: 'exp-field' }, el('label', {}, label), ctrl);
+  const selects = {};
   const sel = (key, list) => {
     const s = el('select', { class: 'select' }, list.map(([v, n]) => el('option', { value: v, selected: String(opts[key]) === String(v) }, n)));
-    s.addEventListener('change', () => { opts[key] = isNaN(+s.value) ? s.value : +s.value; updateEst(); });
+    s.addEventListener('change', () => { opts[key] = isNaN(+s.value) ? s.value : +s.value; activePreset = null; if (key === 'mode') saveLast(); updateEst(); });
+    selects[key] = s;
     return s;
   };
+  const saveLast = () => settings.set('exportLast', { ...(settings.get('exportLast') || {}), mode: opts.mode });
   const name = el('input', { class: 'input', value: opts.name });
   name.addEventListener('input', () => (opts.name = name.value));
   const formats = isDesktop
     ? [['mp4', 'MP4 (H.264) — recomendado'], ['webm', 'WebM (VP9)'], ['mov', 'MOV (H.264)'], ['gif', 'GIF animado'], ['mp3', 'Somente áudio (MP3)']]
     : [['webm', 'WebM (VP9)']];
+  const applyPreset = (pr) => {
+    for (const k of ['res', 'fps', 'format', 'quality']) {
+      if (pr[k] == null) continue;
+      if (k === 'format' && !formats.some(([v]) => v === pr[k])) continue;
+      opts[k] = pr[k];
+      if (selects[k]) selects[k].value = String(pr[k]);
+    }
+    activePreset = pr.id;
+    const aspect = st.width / st.height;
+    if (pr.aspect === '9:16' && aspect > 0.7) { warn.textContent = t('Dica: este projeto é horizontal. Para Reels/TikTok/Shorts, crie o projeto no formato 9:16.'); warn.style.display = ''; }
+    else warn.style.display = 'none';
+    updateEst();
+  };
+  const custom = () => settings.get('exportPresets') || [];
+  const presetRow = el('div', { class: 'chips exp-presets' });
+  const fillPresets = () => {
+    presetRow.innerHTML = '';
+    const list = isDesktop ? PRESETS : PRESETS.filter((p) => p.format === 'mp4').map((p) => ({ ...p, format: 'webm' }));
+    for (const pr of list) presetRow.append(el('button', { class: 'chip', 'data-id': pr.id, onclick: () => applyPreset(pr) }, pr.name));
+    for (const pr of custom()) {
+      const b = el('button', { class: 'chip no-tr', 'data-id': pr.id, title: t('Clique com o botão direito para apagar'), onclick: () => applyPreset(pr) }, pr.name);
+      b.addEventListener('contextmenu', (e) => { e.preventDefault(); settings.set('exportPresets', custom().filter((x) => x.id !== pr.id)); fillPresets(); });
+      presetRow.append(b);
+    }
+    presetRow.append(el('button', { class: 'chip-btn', onclick: async () => {
+      const n = await promptDialog(t('Nome da predefinição'), t('Minha predefinição'));
+      if (!n) return;
+      const pr = { id: 'c' + Date.now(), name: n, res: opts.res, fps: opts.fps, format: opts.format, quality: opts.quality };
+      settings.set('exportPresets', [...custom(), pr]);
+      activePreset = pr.id;
+      fillPresets(); updateEst();
+    } }, '+ ' + t('Salvar atual')));
+  };
+  fillPresets();
   const preview = el('canvas', { class: 'exp-preview', width: 320, height: Math.round(320 * st.height / st.width) });
   try { renderFrame(preview.getContext('2d'), Math.min(store.time, dur - 0.01)); } catch {}
   const body = el('div', { class: 'exp-grid' },
     el('div', { class: 'exp-left' }, preview, el('div', { class: 'muted small center' }, 'Capa / prévia')),
     el('div', { class: 'exp-right' },
+      el('div', { class: 'exp-sub' }, 'Predefinições'),
+      presetRow,
       field('Nome', name),
       field('Resolução', sel('res', RES)),
       field('Taxa de quadros', sel('fps', [[24, '24 fps'], [25, '25 fps'], [30, '30 fps'], [50, '50 fps'], [60, '60 fps']])),
       field('Formato', sel('format', formats)),
       hasRange ? field('Intervalo', sel('range', [['all', 'Linha do tempo inteira'], ['io', `${t('Entrada → Saída')} (${fmtTime(rIn, opts.fps)} – ${fmtTime(rOut, opts.fps)})`]])) : null,
       field('Qualidade', sel('quality', [['low', 'Baixa (arquivo menor)'], ['medium', 'Recomendada'], ['high', 'Alta'], ['max', 'Máxima']])),
+      fast ? field('Modo', sel('mode', [['fast', 'Rápido (recomendado)'], ['realtime', 'Tempo real (compatível)']])) : null,
       est,
-      el('div', { class: 'exp-note' }, el('span', { html: icon('info', 14) }), el('span', {}, 'A exportação é feita em tempo real: deixe o AsturCut aberto até terminar.')),
+      warn,
+      el('div', { class: 'exp-note' }, el('span', { html: icon('info', 14) }), note),
     ));
   updateEst();
   modal({
-    title: 'Exportar', width: 720, body,
+    title: 'Exportar', width: 760, body,
     actions: [
       { label: 'Cancelar' },
       { label: 'Exportar', primary: true, onClick: () => { const { W, H } = sizeFor(); startExport({ ...opts, W, H, start: opts.range === 'io' ? rIn : 0, duration: expDur() }); } },
@@ -101,6 +166,36 @@ async function startExport(o) {
     onClose: () => { cancelled = true; },
   });
   const setP = (p, txt) => { bar.style.width = Math.round(p * 100) + '%'; if (txt) label.textContent = txt; };
+
+  if (o.mode === 'fast' && isDesktop && fastSupported()) {
+    const pctx0 = prevC.getContext('2d');
+    let lastPv = 0;
+    const ui = {
+      setP, cancelled: () => cancelled,
+      preview: (cv) => { const n = performance.now(); if (n - lastPv > 150) { pctx0.drawImage(cv, 0, 0, prevC.width, prevC.height); lastPv = n; } },
+    };
+    const prevTime = store.time;
+    const t0 = performance.now();
+    let off = null;
+    try {
+      off = api.on('export:progress', (p) => setP(0.93 + p * 0.07, t('Finalizando o arquivo... {p}%', { p: Math.round(p * 100) })));
+      const result = await fastExport({ ...o, bitrate: bitrate(o.W, o.H, o.quality) }, outPath, ui, t);
+      off(); off = null;
+      m.close();
+      if (!result) { toast('Exportação cancelada', 'info'); return; }
+      done(result, (performance.now() - t0) / 1000);
+      return;
+    } catch (e) {
+      console.error(e);
+      if (off) off();
+      if (cancelled) { m.close(); return; }
+      toast(t('O modo rápido falhou neste computador — exportando em tempo real.'), 'info');
+      setP(0, t('Preparando...'));
+    } finally {
+      store.time = prevTime;
+      draw();
+    }
+  }
 
   player.exporting = true;
   const prevTime = store.time;
@@ -192,10 +287,12 @@ async function startExport(o) {
   }
 }
 
-function done(path) {
+function done(path, secs) {
   modal({
     title: 'Exportação concluída', width: 440,
-    body: el('div', { class: 'done-box' }, el('div', { class: 'done-icon', html: icon('check', 36) }), el('div', {}, 'Seu vídeo foi exportado com sucesso!'), path ? el('div', { class: 'muted small path' }, path) : null),
+    body: el('div', { class: 'done-box' }, el('div', { class: 'done-icon', html: icon('check', 36) }), el('div', {}, 'Seu vídeo foi exportado com sucesso!'),
+      secs ? el('div', { class: 'muted small' }, t('Feito em {s}', { s: fmtTime(secs, 1, false) })) : null,
+      path ? el('div', { class: 'muted small path' }, path) : null),
     actions: [
       path ? { label: 'Abrir pasta', onClick: () => api.showItem(path) } : null,
       { label: 'Fechar', primary: true },

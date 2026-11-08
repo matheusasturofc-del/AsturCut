@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('astur', {
   info: () => ipcRenderer.invoke('app:info'),
   setLang: (l) => ipcRenderer.send('app:set-lang', l),
   checkUpdate: () => ipcRenderer.invoke('app:check-update'),
+  bootStep: (step) => ipcRenderer.send('app:boot-step', step),
+  ready: () => ipcRenderer.send('app:ready'),
   importMedia: () => ipcRenderer.invoke('dialog:import-media'),
   importFonts: () => ipcRenderer.invoke('dialog:import-fonts'),
   describeFiles: (paths) => ipcRenderer.invoke('file:describe', paths),
@@ -25,6 +27,10 @@ contextBridge.exposeInMainWorld('astur', {
   exportBegin: () => ipcRenderer.invoke('export:begin'),
   exportChunk: (buf) => ipcRenderer.invoke('export:chunk', buf),
   exportEnd: (o) => ipcRenderer.invoke('export:end', o),
+  fxBegin: () => ipcRenderer.invoke('fx:begin'),
+  fxVideo: (buf) => ipcRenderer.invoke('fx:video', buf),
+  fxAudio: (buf) => ipcRenderer.invoke('fx:audio', buf),
+  fxEnd: (o) => ipcRenderer.invoke('fx:end', o),
   on: (channel, cb) => {
     const allowed = ['win:state', 'export:progress', 'project:open-file', 'app:before-close'];
     if (!allowed.includes(channel)) return () => {};
