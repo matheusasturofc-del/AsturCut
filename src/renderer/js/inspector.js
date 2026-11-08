@@ -1,5 +1,6 @@
 // Painel de propriedades (Detalhes / Vídeo / Texto / Áudio / Velocidade / Animação / Ajuste / Efeitos)
 import { store, bus, ASPECTS, defaultAdjust } from './store.js';
+import { t } from './i18n.js';
 import { $, el, icon, fmtTime, fmtShort, clamp } from './util.js';
 import { settings } from './settings.js';
 import { FONTS } from './library.js';
@@ -110,7 +111,7 @@ function renderProject() {
   const box = el('div', { class: 'details' },
     row('Nome:', name),
     row('Caminho:', el('span', { class: 'path', title: store.filePath || '' }, store.filePath || 'Não salvo')),
-    row('Mídia importada:', el('span', {}, `${p.media.filter((m) => !m.hidden).length} arquivo(s)`)),
+    row('Mídia importada:', el('span', {}, t('{n} arquivo(s)', { n: p.media.filter((m) => !m.hidden).length }))),
     row('Duração:', el('span', {}, fmtTime(store.duration(), st.fps))),
     el('div', { class: 'divider' }),
     select('Proporção de aspecto:', st.aspect, aspectOpts, (v) => setAspect(v)),
@@ -128,7 +129,7 @@ function renderProject() {
 }
 
 function renderMulti(sel) {
-  header(`${sel.length} clipes selecionados`);
+  header(t('{n} clipes selecionados', { n: sel.length }));
   bodyEl.append(section('Ações em grupo',
     el('div', { class: 'btn-row' },
       el('button', { class: 'btn', onclick: () => store.duplicate() }, 'Duplicar'),
@@ -172,7 +173,7 @@ function renderClip(c) {
   header('', tabs, active, (id) => { lastTab[c.type] = id; render(); });
   const fn = { basic: basicTab, text: textTab, audio: audioTab, speed: speedTab, anim: animTab, adjust: adjustTab, fx: fxTab, filter: filterTab, timing: timingTab }[active];
   fn(c);
-  bodyEl.append(el('div', { class: 'insp-foot muted small' }, `Início ${fmtShort(c.start)} · Duração ${fmtShort(c.duration)}`));
+  bodyEl.append(el('div', { class: 'insp-foot muted small' }, t('Início {a} · Duração {b}', { a: fmtShort(c.start), b: fmtShort(c.duration) })));
 }
 
 function basicTab(c) {
@@ -288,7 +289,7 @@ function speedTab(c) {
     el('div', { class: 'chips' }, presets.map((s) => el('button', { class: 'chip' + ((c.speed || 1) === s ? ' on' : ''), onclick: () => setSpeed(c, s) }, s + 'x'))),
     slider('Personalizado', c.speed || 1, { min: 0.1, max: 10, step: 0.05, unit: 'x', def: 1, onInput: (v) => { const src = c.duration * (c.speed || 1); c.speed = v; c.duration = src / v; store.touch(); } }),
     toggle('Alterar tom', !!c.changePitch, (v) => updC(c, { changePitch: v })),
-    el('div', { class: 'muted small' }, `Nova duração: ${fmtShort(c.duration)}`),
+    el('div', { class: 'muted small' }, t('Nova duração: {d}', { d: fmtShort(c.duration) })),
   ));
 }
 

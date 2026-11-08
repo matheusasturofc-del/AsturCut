@@ -1,5 +1,6 @@
 // Importação de mídia, miniaturas, formas de onda, fontes e elementos de reprodução
 import { store, bus } from './store.js';
+import { t } from './i18n.js';
 import { uid, toast } from './util.js';
 import { renderSfx, audioDef } from './lib/sfx.js';
 
@@ -73,7 +74,7 @@ async function addDesktopFiles(files) {
   const added = [];
   for (const f of files) {
     const type = typeFromExt(f.ext);
-    if (!type) { toast(`Formato não suportado: ${f.name}`, 'error'); continue; }
+    if (!type) { toast(t('Formato não suportado: {name}', { name: f.name }), 'error'); continue; }
     const existing = store.p.media.find((m) => m.path === f.path);
     if (existing) { added.push(existing); continue; }
     const m = { id: uid('med'), name: f.name, type, path: f.path, size: f.size, ext: f.ext, duration: 0, width: 0, height: 0 };
@@ -89,7 +90,7 @@ async function addBrowserFiles(files) {
   for (const f of files) {
     const ext = f.name.split('.').pop();
     const type = typeFromExt(ext);
-    if (!type) { toast(`Formato não suportado: ${f.name}`, 'error'); continue; }
+    if (!type) { toast(t('Formato não suportado: {name}', { name: f.name }), 'error'); continue; }
     const m = { id: uid('med'), name: f.name, type, size: f.size, ext, duration: 0, width: 0, height: 0, browserOnly: true };
     blobFiles.set(m.id, f);
     runtime.set(m.id, { url: URL.createObjectURL(f) });
@@ -106,7 +107,7 @@ async function finalizeImport(added) {
   await Promise.all(added.map((m) => probe(m).catch((e) => console.warn('probe', m.name, e))));
   store.dirty = true;
   bus.emit('media');
-  toast(`${added.length} arquivo(s) importado(s)`, 'success');
+  toast(t('{n} arquivo(s) importado(s)', { n: added.length }), 'success');
   // quadros e formas de onda em segundo plano
   for (const m of added) analyze(m);
 }
@@ -117,7 +118,7 @@ export async function addLibraryAudio(id) {
   if (m && runtime.get(m.id)?.url) return m;
   const r = await renderSfx(id);
   if (!m) {
-    m = { id: uid('med'), name: r.name, type: 'audio', gen: id, duration: r.duration, size: r.blob.size, ext: 'wav', hidden: true };
+    m = { id: uid('med'), name: t(r.name), type: 'audio', gen: id, duration: r.duration, size: r.blob.size, ext: 'wav', hidden: true };
     store.p.media.push(m);
   }
   runtime.set(m.id, { ...(runtime.get(m.id) || {}), url: r.url });
@@ -138,7 +139,7 @@ export async function restoreProjectMedia() {
   bus.emit('media');
   for (const m of store.p.media) { if (m.genImg) continue; probe(m).then(() => analyze(m)).catch(() => { m.missing = true; bus.emit('media'); }); }
   for (const f of store.p.fonts || []) loadCustomFont(f).catch(() => {});
-  if (missing.length) toast(`${missing.length} mídia(s) não encontrada(s) (importadas no navegador).`, 'error', 4000);
+  if (missing.length) toast(t('{n} mídia(s) não encontrada(s) (importadas no navegador).', { n: missing.length }), 'error', 4000);
 }
 
 function loadEl(m) {
@@ -316,9 +317,9 @@ export async function importFonts() {
   }
   const ok = [];
   for (const f of files) {
-    try { await loadCustomFont(f); store.p.fonts = store.p.fonts || []; if (!store.p.fonts.some((x) => x.family === f.family)) store.p.fonts.push({ family: f.family, path: f.path }); ok.push(f.family); } catch (e) { toast('Falha ao carregar fonte ' + f.family, 'error'); }
+    try { await loadCustomFont(f); store.p.fonts = store.p.fonts || []; if (!store.p.fonts.some((x) => x.family === f.family)) store.p.fonts.push({ family: f.family, path: f.path }); ok.push(f.family); } catch (e) { toast(t('Falha ao carregar fonte {name}', { name: f.family }), 'error'); }
   }
-  if (ok.length) { toast(`Fonte(s) adicionada(s): ${ok.join(', ')}`, 'success'); bus.emit('fonts'); saveUserFonts(); }
+  if (ok.length) { toast(t('Fonte(s) adicionada(s): {list}', { list: ok.join(', ') }), 'success'); bus.emit('fonts'); saveUserFonts(); }
   return ok;
 }
 export async function loadCustomFont(f) {
@@ -349,7 +350,7 @@ export { audioDef };
 
 // ---------- Imagens geradas (fundos grátis da biblioteca) ----------
 export const BACKGROUNDS = [
-  ...['#000000', '#ffffff', '#1ccfdc', '#ff2d55', '#ffcc00', '#34c759', '#5856d6', '#ff9500', '#1c1c1e', '#8e8e93', '#ff6fa8', '#0a84ff'].map((c) => ({ id: 'solid:' + c, name: 'Cor ' + c, kind: 'solid', colors: [c] })),
+  ...['#000000', '#ffffff', '#1ccfdc', '#ff2d55', '#ffcc00', '#34c759', '#5856d6', '#ff9500', '#1c1c1e', '#8e8e93', '#ff6fa8', '#0a84ff'].map((c) => ({ id: 'solid:' + c, name: 'Cor ' + c, label: ['Cor {c}', c], kind: 'solid', colors: [c] })),
   { id: 'grad:#ff512f:#dd2476', name: 'Gradiente Fogo', kind: 'grad', colors: ['#ff512f', '#dd2476'] },
   { id: 'grad:#1ccfdc:#5b2bff', name: 'Gradiente Astur', kind: 'grad', colors: ['#1ccfdc', '#5b2bff'] },
   { id: 'grad:#f7971e:#ffd200', name: 'Gradiente Sol', kind: 'grad', colors: ['#f7971e', '#ffd200'] },
@@ -391,7 +392,7 @@ async function genImage(specId) {
   const url = URL.createObjectURL(blob);
   const img = new Image();
   await new Promise((res) => { img.onload = res; img.src = url; });
-  return { url, img, thumb: thumbFrom(c, 1920, 1080), name: spec.name };
+  return { url, img, thumb: thumbFrom(c, 1920, 1080), name: spec.label ? t(spec.label[0], { c: spec.label[1] }) : t(spec.name) };
 }
 
 export async function addBackground(specId) {

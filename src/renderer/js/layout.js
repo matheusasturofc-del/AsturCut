@@ -1,5 +1,6 @@
 // Layout personalizável: redimensionar e reorganizar painéis, presets e visibilidade
 import { $, $$, el, dragHandler, clamp, icon, toast } from './util.js';
+import { t } from './i18n.js';
 import { settings } from './settings.js';
 
 export const LAYOUT_PRESETS = {
@@ -87,7 +88,7 @@ export function usePreset(id) {
   const { name, ...rest } = p;
   settings.patch({ ...structuredClone(rest), layoutPreset: id });
   applyLayout();
-  toast(`Layout: ${name}`, 'info', 1500);
+  toast(t('Layout: {name}', { name: t(name) }), 'info', 1500);
 }
 
 export function togglePanel(which) {

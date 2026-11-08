@@ -1,4 +1,4 @@
-AsturCut — Editor de vídeo
+﻿AsturCut — Editor de vídeo
 
 Licença MIT
 

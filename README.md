@@ -14,9 +14,18 @@ O instalador do Windows é gerado automaticamente pelo GitHub Actions a cada pus
 
 > Para gerar uma **Release** com o `.exe` anexado, crie uma tag `v1.0.0` (por exemplo) e envie: `git tag v1.0.0 && git push origin v1.0.0`.
 
+Ao abrir o instalador, escolha o idioma: **Português, English ou Español**. O AsturCut abre no idioma escolhido, e dá para trocar depois na tela inicial ou em *Personalizar → Aparência*.
+
 Como o instalador não é assinado digitalmente, o Windows SmartScreen pode mostrar um aviso. Clique em **Mais informações → Executar assim mesmo**.
 
 ## Recursos
+
+**Tela inicial**
+- Botão "Criar projeto" em destaque, com atalhos de proporção (YouTube, Reels/TikTok, Instagram, Feed)
+- Começar rápido: abrir projeto, importar mídia, intro animada, slideshow de fotos
+- Projetos recentes com miniatura, duração e data, e busca na aba Projetos
+- 6 modelos prontos: intro animada, slideshow de fotos, Reels com legenda, abertura de canal, aniversário e citação
+- Idiomas: Português, English e Español
 
 **Edição**
 - Linha do tempo com várias trilhas (vídeo/camadas e áudio), trilha principal, bloquear, ocultar e silenciar trilhas

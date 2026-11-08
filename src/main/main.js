@@ -9,6 +9,29 @@ const { spawn } = require('child_process');
 const isDev = process.argv.includes('--dev');
 let win = null;
 let pendingOpenFile = null;
+let lang = 'pt';
+
+// Textos dos diálogos nativos
+const L = {
+  pt: { importMedia: 'Importar mídia', media: 'Mídia', videos: 'Vídeos', audio: 'Áudio', images: 'Imagens', all: 'Todos', importFonts: 'Importar fontes', fonts: 'Fontes', saveProject: 'Salvar projeto', openProject: 'Abrir projeto', projectType: 'Projeto AsturCut', exportVideo: 'Exportar vídeo', project: 'Projeto', noExport: 'Nenhuma exportação em andamento', ffmpegFail: 'FFmpeg falhou: ' },
+  en: { importMedia: 'Import media', media: 'Media', videos: 'Videos', audio: 'Audio', images: 'Images', all: 'All files', importFonts: 'Import fonts', fonts: 'Fonts', saveProject: 'Save project', openProject: 'Open project', projectType: 'AsturCut project', exportVideo: 'Export video', project: 'Project', noExport: 'No export in progress', ffmpegFail: 'FFmpeg failed: ' },
+  es: { importMedia: 'Importar medios', media: 'Medios', videos: 'Videos', audio: 'Audio', images: 'Imágenes', all: 'Todos', importFonts: 'Importar fuentes', fonts: 'Fuentes', saveProject: 'Guardar proyecto', openProject: 'Abrir proyecto', projectType: 'Proyecto AsturCut', exportVideo: 'Exportar video', project: 'Proyecto', noExport: 'No hay ninguna exportación en curso', ffmpegFail: 'FFmpeg falló: ' },
+};
+const tr = (k) => (L[lang] || L.pt)[k];
+
+// Idioma escolhido no instalador (o NSIS grava o código do idioma do Windows em resources/installer-lang.txt)
+function installerLang() {
+  try {
+    const raw = fs.readFileSync(path.join(process.resourcesPath, 'installer-lang.txt'), 'utf8').replace(/[^0-9]/g, '');
+    const id = parseInt(raw, 10);
+    if (!id) return null;
+    const primary = id & 0x3ff;
+    if (primary === 0x16) return 'pt';
+    if (primary === 0x0a) return 'es';
+    if (primary === 0x09) return 'en';
+  } catch {}
+  return null;
+}
 
 // ---------- Protocolo astur:// para servir mídia local (com suporte a Range p/ seek de vídeo) ----------
 protocol.registerSchemesAsPrivileged([
@@ -143,7 +166,9 @@ ipcMain.handle('app:info', () => ({
   videos: app.getPath('videos'),
   userData: app.getPath('userData'),
   openFile: pendingOpenFile,
+  installerLang: installerLang(),
 }));
+ipcMain.on('app:set-lang', (_e, l) => { if (L[l]) lang = l; });
 
 // ---------- IPC: arquivos ----------
 const MEDIA_EXT = ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'ogv', 'mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
@@ -155,14 +180,14 @@ async function describeFile(p) {
 
 ipcMain.handle('dialog:import-media', async () => {
   const r = await dialog.showOpenDialog(win, {
-    title: 'Importar mídia',
+    title: tr('importMedia'),
     properties: ['openFile', 'multiSelections'],
     filters: [
-      { name: 'Mídia', extensions: MEDIA_EXT },
-      { name: 'Vídeos', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'ogv'] },
-      { name: 'Áudio', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'] },
-      { name: 'Imagens', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'] },
-      { name: 'Todos', extensions: ['*'] },
+      { name: tr('media'), extensions: MEDIA_EXT },
+      { name: tr('videos'), extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'ogv'] },
+      { name: tr('audio'), extensions: ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'] },
+      { name: tr('images'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'] },
+      { name: tr('all'), extensions: ['*'] },
     ],
   });
   if (r.canceled) return [];
@@ -171,9 +196,9 @@ ipcMain.handle('dialog:import-media', async () => {
 
 ipcMain.handle('dialog:import-fonts', async () => {
   const r = await dialog.showOpenDialog(win, {
-    title: 'Importar fontes',
+    title: tr('importFonts'),
     properties: ['openFile', 'multiSelections'],
-    filters: [{ name: 'Fontes', extensions: ['ttf', 'otf', 'woff', 'woff2'] }],
+    filters: [{ name: tr('fonts'), extensions: ['ttf', 'otf', 'woff', 'woff2'] }],
   });
   if (r.canceled) return [];
   return Promise.all(r.filePaths.map(describeFile));
@@ -191,9 +216,9 @@ ipcMain.handle('project:save', async (_e, { filePath, data, saveAs }) => {
   let target = filePath;
   if (!target || saveAs) {
     const r = await dialog.showSaveDialog(win, {
-      title: 'Salvar projeto',
-      defaultPath: path.join(app.getPath('documents'), `${(data && data.name) || 'Projeto'}.astur`),
-      filters: [{ name: 'Projeto AsturCut', extensions: ['astur'] }],
+      title: tr('saveProject'),
+      defaultPath: path.join(app.getPath('documents'), `${((data && data.name) || tr('project')).replace(/[\\/:*?"<>|]/g, '-')}.astur`),
+      filters: [{ name: tr('projectType'), extensions: ['astur'] }],
     });
     if (r.canceled || !r.filePath) return null;
     target = r.filePath;
@@ -206,9 +231,9 @@ ipcMain.handle('project:open', async (_e, filePath) => {
   let target = filePath;
   if (!target) {
     const r = await dialog.showOpenDialog(win, {
-      title: 'Abrir projeto',
+      title: tr('openProject'),
       properties: ['openFile'],
-      filters: [{ name: 'Projeto AsturCut', extensions: ['astur'] }],
+      filters: [{ name: tr('projectType'), extensions: ['astur'] }],
     });
     if (r.canceled || !r.filePaths[0]) return null;
     target = r.filePaths[0];
@@ -235,8 +260,8 @@ function ffmpegPath() {
 ipcMain.handle('export:choose', async (_e, { name, format }) => {
   const ext = format === 'webm' ? 'webm' : format === 'gif' ? 'gif' : format === 'mp3' ? 'mp3' : format === 'mov' ? 'mov' : 'mp4';
   const r = await dialog.showSaveDialog(win, {
-    title: 'Exportar vídeo',
-    defaultPath: path.join(app.getPath('videos'), `${name || 'video'}.${ext}`),
+    title: tr('exportVideo'),
+    defaultPath: path.join(app.getPath('videos'), `${(name || 'video').replace(/[\\/:*?"<>|]/g, '-')}.${ext}`),
     filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
   });
   return r.canceled ? null : r.filePath;
@@ -255,7 +280,7 @@ ipcMain.handle('export:chunk', async (_e, buf) => {
 });
 
 ipcMain.handle('export:end', async (e, opts) => {
-  if (!exportJob) throw new Error('Nenhuma exportação em andamento');
+  if (!exportJob) throw new Error(tr('noExport'));
   const job = exportJob;
   exportJob = null;
   await new Promise((res) => job.stream.end(res));
@@ -289,7 +314,7 @@ ipcMain.handle('export:end', async (e, opts) => {
       }
     });
     proc.on('error', reject);
-    proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error('FFmpeg falhou: ' + log.slice(-600)))));
+    proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(tr('ffmpegFail') + log.slice(-600)))));
   });
   fs.promises.unlink(job.tmp).catch(() => {});
   return outPath;

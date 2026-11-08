@@ -1,5 +1,6 @@
 // Ações para adicionar itens da biblioteca ao projeto (clique, duplo clique ou arrastar)
 import { store, bus, defaultText } from './store.js';
+import { t } from './i18n.js';
 import { toast, deepClone } from './util.js';
 import { settings } from './settings.js';
 import { importDropped, addLibraryAudio } from './media.js';
@@ -53,7 +54,8 @@ export function addMedia(m, info = null) {
 export function addText(presetId = 'default', info = null) {
   const p = TEXT_PRESETS.find((x) => x.id === presetId) || TEXT_PRESETS[0];
   const text = { ...defaultText(), ...deepClone(p.t) };
-  return placeVisual({ type: 'text', name: p.name, text, transform: { x: p.x || 0, y: p.y || 0, scale: 1, rotation: 0, opacity: 1 } }, settings.get('textDuration'), info);
+  text.content = t(text.content);
+  return placeVisual({ type: 'text', name: t(p.name), text, transform: { x: p.x || 0, y: p.y || 0, scale: 1, rotation: 0, opacity: 1 } }, settings.get('textDuration'), info);
 }
 
 export function addSticker(emoji, info = null) {
@@ -62,7 +64,7 @@ export function addSticker(emoji, info = null) {
 
 export function addShape(kind, info = null) {
   const color = kind === 'like' ? '#1877f2' : settings.get('accent');
-  return placeVisual({ type: 'shape', name: 'Forma', shape: { kind, color, stroke: '#ffffff', strokeWidth: 0, title: 'Seu Nome', subtitle: 'Cargo ou descrição' }, transform: { scale: kind === 'lowerthird' ? 0.8 : 0.6, y: kind === 'lowerthird' ? 0.3 : 0 } }, settings.get('textDuration'), info);
+  return placeVisual({ type: 'shape', name: 'Forma', shape: { kind, color, stroke: '#ffffff', strokeWidth: 0, title: t('Seu Nome'), subtitle: t('Cargo ou descrição') }, transform: { scale: kind === 'lowerthird' ? 0.8 : 0.6, y: kind === 'lowerthird' ? 0.3 : 0 } }, settings.get('textDuration'), info);
 }
 
 function targetVisualClip(clipId) {
@@ -78,7 +80,7 @@ export function applyEffect(id, { clipId = null, asLayer = false, info = null } 
     store.begin();
     if (!c.effects.some((e) => e.id === id)) c.effects.push({ id, intensity: 0.6 });
     store.commit('effect');
-    toast(`Efeito "${def.name}" aplicado ao clipe`, 'success');
+    toast(t('Efeito "{name}" aplicado ao clipe', { name: t(def.name) }), 'success');
     return c;
   }
   const sel = store.primarySelected();
@@ -95,7 +97,7 @@ export function applyFilter(id, { clipId = null, asLayer = false, info = null } 
   const c = asLayer ? null : targetVisualClip(clipId);
   if (c) {
     store.updateClip(c.id, { filter: { id, intensity: c.filter?.intensity ?? 1 } });
-    toast(`Filtro "${def.name}" aplicado`, 'success');
+    toast(t('Filtro "{name}" aplicado', { name: t(def.name) }), 'success');
     return c;
   }
   const sel = store.primarySelected();
@@ -139,7 +141,7 @@ export function applyTransition(id, clipId = null, atTime = null) {
   if (!target) { toast('Coloque dois clipes encostados na mesma trilha para usar transições', 'error', 3500); return; }
   store.updateClip(target.id, { transitionIn: { id, dur: target.transitionIn?.dur || settings.get('transitionDuration') } });
   store.selectTransition(target.id);
-  toast(`Transição "${TRANSITION_MAP[id].name}" aplicada`, 'success');
+  toast(t('Transição "{name}" aplicada', { name: t(TRANSITION_MAP[id].name) }), 'success');
 }
 
 export function applyAnimation(kind, id) {
@@ -157,7 +159,7 @@ export async function addAudio(id, info = null) {
     store.begin();
     const tr = store.findTrackFor('audio', store.time, store.time + m.duration);
     return store.addClip({ trackId: tr.id, type: 'audio', mediaId: m.id, name: m.name, start: store.time, duration: m.duration });
-  } catch (e) { toast('Falha ao gerar áudio: ' + e.message, 'error'); }
+  } catch (e) { toast(t('Falha ao gerar áudio: {e}', { e: e.message }), 'error'); }
 }
 
 // soltar na linha do tempo

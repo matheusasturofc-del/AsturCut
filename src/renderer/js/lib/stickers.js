@@ -1,3 +1,4 @@
+import { t } from '../i18n.js';
 // STICKERS: emojis e formas vetoriais (grátis)
 export const EMOJI_CATS = {
   'Rostos': '😀 😂 🤣 😍 🥰 😎 🤩 😜 🤪 😇 🙃 😉 😱 😭 😡 🤯 🥳 😴 🤔 🤫 🙄 😬 🥶 🥵 🤡 👻 💀 👽 🤖 😈'.split(' '),
@@ -77,7 +78,7 @@ export function drawShape(ctx, kind, size, color = '#ffffff', stroke = null, str
       ctx.fillStyle = '#fff';
       ctx.font = `700 ${h * 0.42}px Montserrat, sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(kind === 'subscribe' ? 'INSCREVER-SE' : '👍  CURTIR', 0, h * 0.03);
+      ctx.fillText(kind === 'subscribe' ? t('INSCREVER-SE') : t('👍  CURTIR'), 0, h * 0.03);
       return { w, h };
     }
     case 'progress': {
@@ -91,9 +92,9 @@ export function drawShape(ctx, kind, size, color = '#ffffff', stroke = null, str
       ctx.fillStyle = color; ctx.fillRect(-w / 2, -h / 2, s * 0.06, h);
       ctx.fillStyle = 'rgba(10,10,12,0.85)'; ctx.fillRect(-w / 2 + s * 0.06, -h / 2, w - s * 0.06, h);
       ctx.fillStyle = '#fff'; ctx.font = `700 ${h * 0.34}px Montserrat, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.fillText(extra.title || 'Seu Nome', -w / 2 + s * 0.16, -h * 0.13);
+      ctx.fillText(extra.title || t('Seu Nome'), -w / 2 + s * 0.16, -h * 0.13);
       ctx.fillStyle = color; ctx.font = `500 ${h * 0.22}px Montserrat, sans-serif`;
-      ctx.fillText(extra.subtitle || 'Cargo ou descrição', -w / 2 + s * 0.16, h * 0.22);
+      ctx.fillText(extra.subtitle || t('Cargo ou descrição'), -w / 2 + s * 0.16, h * 0.22);
       return { w, h };
     }
   }

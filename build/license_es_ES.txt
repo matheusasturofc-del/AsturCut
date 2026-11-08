@@ -1,0 +1,16 @@
+﻿AsturCut — Editor de video
+
+Licencia MIT
+
+Copyright (c) 2026 Matheus Astur
+
+Se concede permiso, de forma gratuita, a cualquier persona que obtenga una copia
+de este software, para usarlo sin restricciones, incluidos los derechos de usar,
+copiar, modificar, fusionar, publicar y distribuir.
+
+EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍA DE NINGÚN TIPO.
+
+Componentes de terceros incluidos:
+- Electron (MIT)
+- FFmpeg (LGPL/GPL) a través de ffmpeg-static
+- Fuentes de Google Fonts a través de Fontsource (SIL Open Font License / Apache 2.0)

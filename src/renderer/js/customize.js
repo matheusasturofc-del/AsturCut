@@ -1,5 +1,6 @@
 // Tela "Personalizar": tema, cores, layout, editor e atalhos
 import { el, icon, modal, toast, confirmDialog } from './util.js';
+import { t, LANG, LANGS } from './i18n.js';
 import { settings, THEMES, DEFAULTS, applyTheme } from './settings.js';
 import { LAYOUT_PRESETS, usePreset, applyLayout } from './layout.js';
 import { ASPECTS } from './store.js';
@@ -83,7 +84,10 @@ function themePane(p, rerender) {
     rowC('Texto / texto secundário', el('div', { class: 'row gap' }, colorC('text'), colorC('muted'))),
   );
   p.append(el('h3', {}, 'Interface'));
+  const langSel = el('select', { class: 'select no-tr' }, LANGS.map((l) => el('option', { value: l.id, selected: l.id === LANG }, l.name)));
+  langSel.addEventListener('change', () => import('./home.js').then((m) => m.changeLanguage(langSel.value, langSel)));
   p.append(
+    rowC('Idioma da interface', langSel),
     rowC('Fonte da interface', selectC('uiFont', UI_FONTS.map((f) => [f, f]))),
     rowC('Tamanho da interface', rangeC('uiScale', 70, 140, 5, '%')),
     rowC('Arredondamento', rangeC('radius', 0, 18, 1, 'px')),
@@ -164,9 +168,9 @@ function editorPane(p) {
 
 function keysPane(p) {
   p.append(el('h3', {}, 'Atalhos do teclado'));
-  const t = el('div', { class: 'keys' });
-  for (const [k, d] of SHORTCUTS) t.append(el('div', { class: 'key-row' }, el('span', {}, d), el('kbd', {}, k)));
-  p.append(t);
+  const tb = el('div', { class: 'keys' });
+  for (const [k, d] of SHORTCUTS) tb.append(el('div', { class: 'key-row' }, el('span', {}, d), el('kbd', {}, k)));
+  p.append(tb);
 }
 
 function aboutPane(p) {
@@ -177,5 +181,5 @@ function aboutPane(p) {
     el('p', {}, 'Editor de vídeo completo e gratuito: múltiplas trilhas, textos, stickers, efeitos, filtros, transições, animações, biblioteca de áudio e fontes grátis — tudo personalizável.'),
     el('p', { class: 'muted small' }, 'Fontes: Google Fonts (licença OFL/Apache). Áudios da biblioteca gerados por síntese — livres de direitos. Conversão de vídeo com FFmpeg (LGPL/GPL).'),
   ));
-  window.astur?.info?.().then((i) => { const v = document.getElementById('about-version'); if (v) v.textContent = `Versão ${i.version} · ${i.platform}`; });
+  window.astur?.info?.().then((i) => { const v = document.getElementById('about-version'); if (v) v.textContent = t('Versão {v} · {p}', { v: i.version, p: i.platform }); });
 }

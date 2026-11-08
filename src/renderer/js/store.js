@@ -1,5 +1,6 @@
 // Estado do projeto, histórico (desfazer/refazer) e operações de edição
 import { uid, deepClone, Emitter, clamp } from './util.js';
+import { t } from './i18n.js';
 import { settings } from './settings.js';
 
 export const bus = new Emitter();
@@ -24,7 +25,7 @@ export function defaultText() {
   };
 }
 
-function newProject(name = 'Projeto sem título') {
+function newProject(name = t('Projeto sem título')) {
   const [w, h] = ASPECTS[settings.get('defaultAspect')] || [1920, 1080];
   return {
     id: uid('prj'), name, version: 1, created: Date.now(),
@@ -32,8 +33,8 @@ function newProject(name = 'Projeto sem título') {
     media: [],
     fonts: [],
     tracks: [
-      { id: uid('trk'), type: 'video', name: 'Principal', main: true, muted: false, hidden: false, locked: false },
-      { id: uid('trk'), type: 'audio', name: 'Áudio 1', muted: false, hidden: false, locked: false },
+      { id: uid('trk'), type: 'video', name: t('Principal'), main: true, muted: false, hidden: false, locked: false },
+      { id: uid('trk'), type: 'audio', name: t('Áudio {n}', { n: 1 }), muted: false, hidden: false, locked: false },
     ],
     clips: [],
     markers: [],
@@ -141,12 +142,12 @@ class Store {
   // ---------- Trilhas ----------
   addTrack(type, index = null, name) {
     const count = this.project.tracks.filter((t) => t.type === type).length + 1;
-    const t = { id: uid('trk'), type, name: name || (type === 'audio' ? `Áudio ${count}` : `Camada ${count}`), muted: false, hidden: false, locked: false };
+    const trk = { id: uid('trk'), type, name: name || (type === 'audio' ? t('Áudio {n}', { n: count }) : t('Camada {n}', { n: count })), muted: false, hidden: false, locked: false };
     if (index == null) {
-      if (type === 'audio') this.project.tracks.push(t);
-      else this.project.tracks.unshift(t);
-    } else this.project.tracks.splice(index, 0, t);
-    return t;
+      if (type === 'audio') this.project.tracks.push(trk);
+      else this.project.tracks.unshift(trk);
+    } else this.project.tracks.splice(index, 0, trk);
+    return trk;
   }
   removeEmptyTracks() {
     this.project.tracks = this.project.tracks.filter((t) => t.main || this.project.clips.some((c) => c.trackId === t.id)

@@ -1,5 +1,6 @@
 // Painel da biblioteca: Mídia, Áudio, Texto, Stickers, Efeitos, Transições, Filtros, Animações e Fontes
 import { store, bus } from './store.js';
+import { t } from './i18n.js';
 import { $, el, icon, fmtShort, fmtBytes, contextMenu, toast, ease } from './util.js';
 import { runtime, importViaDialog, importDropped, BACKGROUNDS, addBackground, drawBackground, importFonts, customFonts, isDesktop, api } from './media.js';
 import { settings } from './settings.js';
@@ -118,7 +119,7 @@ function renderContent() {
   const fn = { media: renderMedia, audio: renderAudio, text: renderText, stickers: renderStickers, effects: renderEffects, transitions: renderTransitions, filters: renderFilters, anims: renderAnims, fonts: renderFonts }[tab];
   fn && fn();
 }
-const match = (s) => !search || s.toLowerCase().includes(search.toLowerCase());
+const match = (s) => !search || s.toLowerCase().includes(search.toLowerCase()) || t(s).toLowerCase().includes(search.toLowerCase());
 
 // ---------- Mídia ----------
 function renderMedia() {
@@ -130,7 +131,7 @@ function renderMedia() {
       const c = el('canvas', { width: 160, height: 90 });
       drawBackground(c.getContext('2d'), b, 160, 90);
       const add = async () => { const m = await addBackground(b.id); addMedia(m); };
-      grid.append(tile({ title: b.name, thumb: c, onAdd: add }));
+      grid.append(tile({ title: b.label ? t(b.label[0], { c: b.label[1] }) : b.name, thumb: c, onAdd: add }));
     }
     content.append(grid);
     return;
@@ -183,7 +184,7 @@ function renderMedia() {
         { label: 'Adicionar no cursor', onClick: () => addMedia(m, { t: store.time, trackId: null, newzone: 'top' }) },
         isDesktop && m.path ? { label: 'Mostrar na pasta', onClick: () => api.showItem(m.path) } : null,
         '-',
-        { label: `Informações: ${m.width ? m.width + '×' + m.height + ' · ' : ''}${fmtBytes(m.size)}`, disabled: true },
+        { label: t('Informações: {info}', { info: `${m.width ? m.width + '×' + m.height + ' · ' : ''}${fmtBytes(m.size)}` }), disabled: true },
         { label: 'Remover do projeto', onClick: () => { store.begin(); store.p.clips = store.p.clips.filter((c) => c.mediaId !== m.id); store.p.media = store.p.media.filter((x) => x !== m); store.commit('rmmedia'); bus.emit('media'); } },
       ]),
     }));
@@ -250,7 +251,8 @@ function renderText() {
   content.append(searchBox('Buscar modelos...'));
   const grid = el('div', { class: 'grid' });
   for (const p of TEXT_PRESETS.filter((p) => (sub.text === 'all' || p.cat === sub.text) && match(p.name))) {
-    const sample = el('div', { class: 'text-sample' }, el('span', { style: textPreviewStyle({ bold: true, ...p.t }) }, p.t.content.length > 14 ? p.t.content.slice(0, 12) + '…' : p.t.content));
+    const ct = t(p.t.content);
+    const sample = el('div', { class: 'text-sample no-tr' }, el('span', { style: textPreviewStyle({ bold: true, ...p.t }) }, ct.length > 14 ? ct.slice(0, 12) + '…' : ct));
     grid.append(tile({ title: p.name, thumb: sample, onAdd: () => addText(p.id), drag: { kind: 'text', id: p.id } }));
   }
   content.append(grid);
@@ -374,15 +376,15 @@ function renderAnims() {
   const grid = el('div', { class: 'grid' });
   grid.append(tile({ title: 'Nenhuma', thumb: el('div', { class: 'tile-ph', html: icon('close', 22) }), active: sel && !sel[key], onClick: () => applyAnimation(s, null) }));
   for (const a of list) {
-    const prev = animatedPreview((x, t, p) => {
+    const prev = animatedPreview((x, tm, p) => {
       const fake = { duration: 1.6, animIn: null, animOut: null, animLoop: null };
       let lt = p * 1.6;
       if (s === 'in') { fake.animIn = { id: a.id, dur: 1 }; } else if (s === 'out') { fake.animOut = { id: a.id, dur: 1 }; lt = p * 1.6; } else fake.animLoop = { id: a.id, speed: 1 };
-      const st = clipAnimation(fake, s === 'loop' ? t : lt);
+      const st = clipAnimation(fake, s === 'loop' ? tm : lt);
       x.fillStyle = '#26262a'; x.fillRect(0, 0, 192, 108);
       x.save(); x.globalAlpha = st.alpha; x.translate(96 + st.dx * 192, 54 + st.dy * 108); x.rotate(st.rot * Math.PI / 180); x.scale(st.scale * st.sx, st.scale * st.sy);
       if (st.blur) x.filter = `blur(${st.blur / 6}px)`;
-      if (a.textOnly) { x.fillStyle = '#fff'; x.font = '700 22px Montserrat'; x.textAlign = 'center'; x.textBaseline = 'middle'; const txt = 'Olá mundo'; x.fillText(a.id === 'typewriter' ? txt.slice(0, Math.floor(txt.length * st.chars)) : txt.split(' ').slice(0, Math.ceil(2 * st.words)).join(' '), 0, 0); }
+      if (a.textOnly) { x.fillStyle = '#fff'; x.font = '700 22px Montserrat'; x.textAlign = 'center'; x.textBaseline = 'middle'; const txt = t('Olá mundo'); x.fillText(a.id === 'typewriter' ? txt.slice(0, Math.floor(txt.length * st.chars)) : txt.split(' ').slice(0, Math.ceil(2 * st.words)).join(' '), 0, 0); }
       else { const g = x.createLinearGradient(-30, -20, 30, 20); g.addColorStop(0, settings.get('accent')); g.addColorStop(1, '#5b2bff'); x.fillStyle = g; x.beginPath(); x.roundRect(-32, -22, 64, 44, 8); x.fill(); }
       x.restore();
     }, 1.8);
@@ -397,7 +399,7 @@ function renderFonts() {
   const isText = sel?.type === 'text';
   content.append(el('div', { class: 'row gap' },
     el('button', { class: 'btn', onclick: () => importFonts(), html: icon('import', 14) + ' Importar fonte (.ttf/.otf)' })));
-  content.append(el('div', { class: 'lib-hint' }, isText ? 'Clique para aplicar ao texto selecionado.' : `${FONTS.length} fontes grátis incluídas. Clique para criar um texto com a fonte.`));
+  content.append(el('div', { class: 'lib-hint' }, isText ? 'Clique para aplicar ao texto selecionado.' : t('{n} fontes grátis incluídas. Clique para criar um texto com a fonte.', { n: FONTS.length })));
   content.append(searchBox('Buscar fontes...'));
   const favs = settings.get('favoriteFonts') || [];
   let list = FONTS.map((f) => ({ family: f.family, category: f.category }));

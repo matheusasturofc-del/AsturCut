@@ -37,9 +37,11 @@ nsis:
   uninstallerIcon: build/icon.ico
   installerHeaderIcon: build/icon.ico
   deleteAppDataOnUninstall: false
-  license: build/license.txt
-  language: "1046"
-  installerLanguages: [pt_BR]
+  # Escolha de idioma no início da instalação: Português, English, Español
+  displayLanguageSelector: true
+  installerLanguages: [pt_BR, en_US, es_ES]
+  multiLanguageInstaller: true
+  include: build/installer.nsh
 linux:
   target: [AppImage]
   icon: build/icon.png

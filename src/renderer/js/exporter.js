@@ -1,5 +1,6 @@
 // Exportação de vídeo (gravação em tempo real do compositor + conversão com FFmpeg no desktop)
 import { store } from './store.js';
+import { t } from './i18n.js';
 import { el, icon, modal, toast, fmtTime, fmtBytes } from './util.js';
 import { renderFrame } from './compositor.js';
 import { player, pause, syncMedia, draw } from './player.js';
@@ -29,7 +30,7 @@ export function openExportDialog() {
   const updateEst = () => {
     const { W, H } = sizeFor();
     const mbps = bitrate(W, H, opts.quality) / 1e6;
-    est.textContent = `${W}×${H} · ${opts.fps} fps · duração ${fmtTime(dur, opts.fps)} · tamanho estimado ~${fmtBytes(mbps * 1e6 / 8 * dur * (opts.format === 'mp4' ? 0.7 : 1))}`;
+    est.textContent = t('{w}×{h} · {fps} fps · duração {d} · tamanho estimado ~{size}', { w: W, h: H, fps: opts.fps, d: fmtTime(dur, opts.fps), size: fmtBytes(mbps * 1e6 / 8 * dur * (opts.format === 'mp4' ? 0.7 : 1)) });
   };
   const field = (label, ctrl) => el('div', { class: 'exp-field' }, el('label', {}, label), ctrl);
   const sel = (key, list) => {
@@ -130,17 +131,17 @@ async function startExport(o) {
     const tick = () => {
       if (cancelled) return resolve();
       const now = performance.now();
-      const t = (now - t0) / 1000;
-      if (t >= o.duration) { store.time = o.duration; renderFrame(ctx, o.duration - 0.001); vTrack.requestFrame?.(); return resolve(); }
-      store.time = t;
-      syncMedia(t, true);
+      const tt = (now - t0) / 1000;
+      if (tt >= o.duration) { store.time = o.duration; renderFrame(ctx, o.duration - 0.001); vTrack.requestFrame?.(); return resolve(); }
+      store.time = tt;
+      syncMedia(tt, true);
       if (now >= next) {
         next += frameDur;
         if (now - next > frameDur * 3) next = now + frameDur;
-        renderFrame(ctx, t);
+        renderFrame(ctx, tt);
         vTrack.requestFrame?.();
         if (now - lastPrev > 120) { pctx.drawImage(canvas, 0, 0, prevC.width, prevC.height); lastPrev = now; }
-        setP(t / o.duration * (o.format === 'webm' || !isDesktop ? 1 : 0.8), `Gravando ${fmtTime(t, o.fps)} / ${fmtTime(o.duration, o.fps)}`);
+        setP(tt / o.duration * (o.format === 'webm' || !isDesktop ? 1 : 0.8), t('Gravando {a} / {b}', { a: fmtTime(tt, o.fps), b: fmtTime(o.duration, o.fps) }));
       }
       setTimeout(tick, 4);
     };
@@ -162,7 +163,7 @@ async function startExport(o) {
     }
     if (isDesktop) {
       setP(0.8, o.format === 'webm' ? 'Salvando...' : 'Convertendo com FFmpeg...');
-      const off = api.on('export:progress', (p) => setP(0.8 + p * 0.2, `Convertendo... ${Math.round(p * 100)}%`));
+      const off = api.on('export:progress', (p) => setP(0.8 + p * 0.2, t('Convertendo... {p}%', { p: Math.round(p * 100) })));
       const result = await api.exportEnd({ outPath, format: o.format, quality: o.quality, fps: o.fps, duration: o.duration });
       off();
       m.close();
