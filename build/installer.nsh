@@ -6,8 +6,16 @@
 !include LogicLib.nsh
 !include WinMessages.nsh
 
-!ifndef BUILD_UNINSTALLER
+; funções compartilhadas recebem o prefixo "un." no desinstalador
+!ifdef BUILD_UNINSTALLER
+  !define ASTUR_P "un."
+!else
+  !define ASTUR_P ""
+!endif
+
+!if 1
   Var AsturLang      ; pt | en | es
+  Var AsturDelData   ; 1 = apagar preferências ao desinstalar
   Var AsturDesk      ; 1 = criar atalho na área de trabalho
   Var AsturScale     ; 100 | 125 | 150 | 200 (escala de DPI)
   Var AsturDlg
@@ -87,6 +95,134 @@
   GetDlgItem $0 $HWNDPARENT ${ID}
   ShowWindow $0 ${SW_HIDE}
 !macroend
+
+
+; ---------- funções compartilhadas (instalador e desinstalador) ----------
+Function ${ASTUR_P}AsturGuiInit
+  ; escala de DPI
+  System::Call 'user32::GetDpiForWindow(p $HWNDPARENT) i .r0'
+  ${If} $0 < 96
+    StrCpy $0 96
+  ${EndIf}
+  ${If} $0 >= 192
+    StrCpy $AsturScale 200
+  ${ElseIf} $0 >= 144
+    StrCpy $AsturScale 150
+  ${ElseIf} $0 >= 120
+    StrCpy $AsturScale 125
+  ${Else}
+    StrCpy $AsturScale 100
+  ${EndIf}
+  Call ${ASTUR_P}AsturResize
+  ; barra de título escura + cantos arredondados (Windows 10/11)
+  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 20, *i 1, i 4)'
+  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 33, *i 2, i 4)'
+  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 35, *i 0x161414, i 4)'
+  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 34, *i 0x3A2C2C, i 4)'
+  !insertmacro AsturHideChrome
+  ; fontes
+  CreateFont $AsturFontTitle "Segoe UI Semibold" 17 600
+  CreateFont $AsturFontText "Segoe UI" 10 400
+  CreateFont $AsturFontSmall "Segoe UI" 8 400
+  CreateFont $AsturFontBold "Segoe UI Semibold" 8 600
+FunctionEnd
+
+Function ${ASTUR_P}AsturResize
+  !insertmacro AsturRect 0 0 720 490
+  System::Call '*(i,i,i,i) p .r1'
+  System::Call 'user32::GetWindowRect(p $HWNDPARENT, p r1)'
+  System::Call '*$1(i .r2, i .r3, i .r4, i .r5)'
+  System::Call 'user32::GetClientRect(p $HWNDPARENT, p r1)'
+  System::Call '*$1(i, i, i .r6, i .r7)'
+  System::Free $1
+  IntOp $8 $4 - $2
+  IntOp $8 $8 - $6
+  IntOp $8 $8 + $R8
+  IntOp $9 $5 - $3
+  IntOp $9 $9 - $7
+  IntOp $9 $9 + $R9
+  System::Call 'user32::GetSystemMetrics(i 0) i .r2'
+  System::Call 'user32::GetSystemMetrics(i 1) i .r3'
+  IntOp $2 $2 - $8
+  IntOp $2 $2 / 2
+  IntOp $3 $3 - $9
+  IntOp $3 $3 / 2
+  System::Call 'user32::SetWindowPos(p $HWNDPARENT, p 0, i r2, i r3, i r8, i r9, i 0x14)'
+  ; a área das páginas ocupa a janela toda
+  GetDlgItem $0 $HWNDPARENT 1018
+  System::Call 'user32::SetWindowPos(p r0, p 0, i 0, i 0, i $R8, i $R9, i 0x14)'
+FunctionEnd
+
+Function ${ASTUR_P}AsturInstShow
+  !insertmacro AsturHideChrome
+  FindWindow $R0 "#32770" "" $HWNDPARENT
+  SetCtlColors $R0 "FFFFFF" "141416"
+  ; a página de instalação tem tamanho fixo: estica para a janela toda
+  !insertmacro AsturRect 0 0 720 490
+  System::Call 'user32::SetWindowPos(p $R0, p 0, i 0, i 0, i $R8, i $R9, i 0x14)'
+  ; fundo escuro atrás de tudo
+  System::Call 'user32::CreateWindowEx(i 0, t "STATIC", t "", i 0x50000000, i 0, i 0, i $R8, i $R9, p $R0, p 0, p 0, p 0) p .r1'
+  SetCtlColors $1 "FFFFFF" "141416"
+  System::Call 'user32::SetWindowPos(p r1, p 1, i 0, i 0, i 0, i 0, i 0x13)'
+  ; esconde lista de detalhes e botão
+  GetDlgItem $0 $R0 1016
+  ShowWindow $0 ${SW_HIDE}
+  GetDlgItem $0 $R0 1027
+  ShowWindow $0 ${SW_HIDE}
+  ; banner
+  !insertmacro AsturRect 0 0 720 210
+  System::Call 'user32::CreateWindowEx(i 0, t "STATIC", t "", i 0x5000004E, i $R6, i $R7, i $R8, i $R9, p $R0, p 0, p 0, p 0) p .r1'
+  !insertmacro AsturSetBmp $1 banner
+  ; título
+  !ifdef BUILD_UNINSTALLER
+  ${If} $AsturLang == "en"
+    StrCpy $2 "Removing AsturCut…"
+    StrCpy $3 "Just a moment. Your projects and videos stay on your computer."
+  ${ElseIf} $AsturLang == "es"
+    StrCpy $2 "Eliminando AsturCut…"
+    StrCpy $3 "Un momento. Tus proyectos y videos siguen en tu computadora."
+  ${Else}
+    StrCpy $2 "Removendo o AsturCut…"
+    StrCpy $3 "Só um instante. Seus projetos e vídeos continuam no computador."
+  ${EndIf}
+  !else
+  ${If} $AsturLang == "en"
+    StrCpy $2 "Installing AsturCut…"
+    StrCpy $3 "This only takes a few seconds. AsturCut will open when it's done."
+  ${ElseIf} $AsturLang == "es"
+    StrCpy $2 "Instalando AsturCut…"
+    StrCpy $3 "Solo tarda unos segundos. AsturCut se abrirá al terminar."
+  ${Else}
+    StrCpy $2 "Instalando o AsturCut…"
+    StrCpy $3 "Isso leva só alguns segundos. O AsturCut abre sozinho no final."
+  ${EndIf}
+  !endif
+  !insertmacro AsturRect 40 240 640 36
+  System::Call 'user32::CreateWindowEx(i 0, t "STATIC", t "$2", i 0x50000000, i $R6, i $R7, i $R8, i $R9, p $R0, p 0, p 0, p 0) p .r1'
+  SetCtlColors $1 "FFFFFF" "141416"
+  SendMessage $1 ${WM_SETFONT} $AsturFontTitle 1
+  !insertmacro AsturRect 41 280 640 22
+  System::Call 'user32::CreateWindowEx(i 0, t "STATIC", t "$3", i 0x50000000, i $R6, i $R7, i $R8, i $R9, p $R0, p 0, p 0, p 0) p .r1'
+  SetCtlColors $1 "9A9AA3" "141416"
+  SendMessage $1 ${WM_SETFONT} $AsturFontText 1
+  ; barra de progresso plana (ciano)
+  GetDlgItem $1 $R0 1004
+  System::Call 'uxtheme::SetWindowTheme(p r1, w "", w "")'
+  System::Call 'user32::GetWindowLong(p r1, i -16) i .r2'
+  IntOp $2 $2 | 1
+  System::Call 'user32::SetWindowLong(p r1, i -16, i r2)'
+  System::Call 'user32::SetWindowLong(p r1, i -20, i 0)'
+  SendMessage $1 0x409 0 0xDCCF1C
+  SendMessage $1 0x2001 0 0x2A2626
+  !insertmacro AsturRect 40 340 640 8
+  System::Call 'user32::SetWindowPos(p r1, p 0, i $R6, i $R7, i $R8, i $R9, i 0x34)'
+  ; texto de status (arquivo sendo extraído) discreto
+  GetDlgItem $1 $R0 1006
+  SetCtlColors $1 "6E6E78" "141416"
+  SendMessage $1 ${WM_SETFONT} $AsturFontSmall 1
+  !insertmacro AsturRect 40 360 640 18
+  System::Call 'user32::SetWindowPos(p r1, p 0, i $R6, i $R7, i $R8, i $R9, i 0x14)'
+FunctionEnd
 
 !ifndef BUILD_UNINSTALLER
 
@@ -191,61 +327,10 @@ Function AsturInstallClick
 FunctionEnd
 
 ; ---------- janela: tamanho, título escuro, cantos ----------
-Function AsturGuiInit
-  ; escala de DPI
-  System::Call 'user32::GetDpiForWindow(p $HWNDPARENT) i .r0'
-  ${If} $0 < 96
-    StrCpy $0 96
-  ${EndIf}
-  ${If} $0 >= 192
-    StrCpy $AsturScale 200
-  ${ElseIf} $0 >= 144
-    StrCpy $AsturScale 150
-  ${ElseIf} $0 >= 120
-    StrCpy $AsturScale 125
-  ${Else}
-    StrCpy $AsturScale 100
-  ${EndIf}
-  Call AsturResize
-  ; barra de título escura + cantos arredondados (Windows 10/11)
-  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 20, *i 1, i 4)'
-  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 33, *i 2, i 4)'
-  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 35, *i 0x161414, i 4)'
-  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 34, *i 0x3A2C2C, i 4)'
-  !insertmacro AsturHideChrome
-  ; fontes
-  CreateFont $AsturFontTitle "Segoe UI Semibold" 17 600
-  CreateFont $AsturFontText "Segoe UI" 10 400
-  CreateFont $AsturFontSmall "Segoe UI" 8 400
-  CreateFont $AsturFontBold "Segoe UI Semibold" 8 600
-FunctionEnd
+
 
 ; janela com área interna de 720 x 490 (na escala atual), centralizada
-Function AsturResize
-  !insertmacro AsturRect 0 0 720 490
-  System::Call '*(i,i,i,i) p .r1'
-  System::Call 'user32::GetWindowRect(p $HWNDPARENT, p r1)'
-  System::Call '*$1(i .r2, i .r3, i .r4, i .r5)'
-  System::Call 'user32::GetClientRect(p $HWNDPARENT, p r1)'
-  System::Call '*$1(i, i, i .r6, i .r7)'
-  System::Free $1
-  IntOp $8 $4 - $2
-  IntOp $8 $8 - $6
-  IntOp $8 $8 + $R8
-  IntOp $9 $5 - $3
-  IntOp $9 $9 - $7
-  IntOp $9 $9 + $R9
-  System::Call 'user32::GetSystemMetrics(i 0) i .r2'
-  System::Call 'user32::GetSystemMetrics(i 1) i .r3'
-  IntOp $2 $2 - $8
-  IntOp $2 $2 / 2
-  IntOp $3 $3 - $9
-  IntOp $3 $3 / 2
-  System::Call 'user32::SetWindowPos(p $HWNDPARENT, p 0, i r2, i r3, i r8, i r9, i 0x14)'
-  ; a área das páginas ocupa a janela toda
-  GetDlgItem $0 $HWNDPARENT 1018
-  System::Call 'user32::SetWindowPos(p r0, p 0, i 0, i 0, i $R8, i $R9, i 0x14)'
-FunctionEnd
+
 
 ; ---------- página 1: boas-vindas ----------
 Function AsturWelcome
@@ -301,63 +386,7 @@ Function AsturWelcomeLeave
 FunctionEnd
 
 ; ---------- página 2: progresso estilizado ----------
-Function AsturInstShow
-  !insertmacro AsturHideChrome
-  FindWindow $R0 "#32770" "" $HWNDPARENT
-  SetCtlColors $R0 "FFFFFF" "141416"
-  ; a página de instalação tem tamanho fixo: estica para a janela toda
-  !insertmacro AsturRect 0 0 720 490
-  System::Call 'user32::SetWindowPos(p $R0, p 0, i 0, i 0, i $R8, i $R9, i 0x14)'
-  ; fundo escuro atrás de tudo
-  System::Call 'user32::CreateWindowEx(i 0, t "STATIC", t "", i 0x50000000, i 0, i 0, i $R8, i $R9, p $R0, p 0, p 0, p 0) p .r1'
-  SetCtlColors $1 "FFFFFF" "141416"
-  System::Call 'user32::SetWindowPos(p r1, p 1, i 0, i 0, i 0, i 0, i 0x13)'
-  ; esconde lista de detalhes e botão
-  GetDlgItem $0 $R0 1016
-  ShowWindow $0 ${SW_HIDE}
-  GetDlgItem $0 $R0 1027
-  ShowWindow $0 ${SW_HIDE}
-  ; banner
-  !insertmacro AsturRect 0 0 720 210
-  System::Call 'user32::CreateWindowEx(i 0, t "STATIC", t "", i 0x5000004E, i $R6, i $R7, i $R8, i $R9, p $R0, p 0, p 0, p 0) p .r1'
-  !insertmacro AsturSetBmp $1 banner
-  ; título
-  ${If} $AsturLang == "en"
-    StrCpy $2 "Installing AsturCut…"
-    StrCpy $3 "This only takes a few seconds. AsturCut will open when it's done."
-  ${ElseIf} $AsturLang == "es"
-    StrCpy $2 "Instalando AsturCut…"
-    StrCpy $3 "Solo tarda unos segundos. AsturCut se abrirá al terminar."
-  ${Else}
-    StrCpy $2 "Instalando o AsturCut…"
-    StrCpy $3 "Isso leva só alguns segundos. O AsturCut abre sozinho no final."
-  ${EndIf}
-  !insertmacro AsturRect 40 240 640 36
-  System::Call 'user32::CreateWindowEx(i 0, t "STATIC", t "$2", i 0x50000000, i $R6, i $R7, i $R8, i $R9, p $R0, p 0, p 0, p 0) p .r1'
-  SetCtlColors $1 "FFFFFF" "141416"
-  SendMessage $1 ${WM_SETFONT} $AsturFontTitle 1
-  !insertmacro AsturRect 41 280 640 22
-  System::Call 'user32::CreateWindowEx(i 0, t "STATIC", t "$3", i 0x50000000, i $R6, i $R7, i $R8, i $R9, p $R0, p 0, p 0, p 0) p .r1'
-  SetCtlColors $1 "9A9AA3" "141416"
-  SendMessage $1 ${WM_SETFONT} $AsturFontText 1
-  ; barra de progresso plana (ciano)
-  GetDlgItem $1 $R0 1004
-  System::Call 'uxtheme::SetWindowTheme(p r1, w "", w "")'
-  System::Call 'user32::GetWindowLong(p r1, i -16) i .r2'
-  IntOp $2 $2 | 1
-  System::Call 'user32::SetWindowLong(p r1, i -16, i r2)'
-  System::Call 'user32::SetWindowLong(p r1, i -20, i 0)'
-  SendMessage $1 0x409 0 0xDCCF1C
-  SendMessage $1 0x2001 0 0x2A2626
-  !insertmacro AsturRect 40 340 640 8
-  System::Call 'user32::SetWindowPos(p r1, p 0, i $R6, i $R7, i $R8, i $R9, i 0x34)'
-  ; texto de status (arquivo sendo extraído) discreto
-  GetDlgItem $1 $R0 1006
-  SetCtlColors $1 "6E6E78" "141416"
-  SendMessage $1 ${WM_SETFONT} $AsturFontSmall 1
-  !insertmacro AsturRect 40 360 640 18
-  System::Call 'user32::SetWindowPos(p r1, p 0, i $R6, i $R7, i $R8, i $R9, i 0x14)'
-FunctionEnd
+
 
 ; ---------- página 3: tudo pronto ----------
 Var AsturFinBtn
@@ -459,4 +488,144 @@ FunctionEnd
 
 !macro customUnInstall
   Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
+  ; preferências e dados do app (só se a pessoa marcou e não é atualização)
+  ${If} $AsturDelData == "1"
+    RMDir /r "$APPDATA\${PRODUCT_NAME}"
+  ${EndIf}
+!macroend
+
+; =====================================================================
+;  Desinstalador no mesmo visual
+; =====================================================================
+!ifdef BUILD_UNINSTALLER
+Var AsturUnSwitch
+Function un.AsturToggleData
+  ${If} $AsturDelData == "1"
+    StrCpy $AsturDelData "0"
+    !insertmacro AsturSetBmp $AsturUnSwitch switch_off
+  ${Else}
+    StrCpy $AsturDelData "1"
+    !insertmacro AsturSetBmp $AsturUnSwitch switch_on
+  ${EndIf}
+FunctionEnd
+Function un.AsturDoUninstall
+  SendMessage $HWNDPARENT 0x408 1 0
+FunctionEnd
+Function un.AsturCancel
+  SendMessage $HWNDPARENT ${WM_COMMAND} 2 0
+FunctionEnd
+
+Function un.AsturUnWelcome
+  IfSilent 0 +2
+    Abort
+  !insertmacro AsturHideChrome
+  nsDialogs::Create 1018
+  Pop $0
+  ${If} $0 == error
+    Abort
+  ${EndIf}
+  SetCtlColors $0 "FFFFFF" "141416"
+  ${If} $AsturLang == "en"
+    StrCpy $2 "Uninstall AsturCut?"
+    StrCpy $3 "Your projects (.astur) and videos will stay on your computer."
+    StrCpy $4 "Also delete my preferences and app data"
+  ${ElseIf} $AsturLang == "es"
+    StrCpy $2 "¿Desinstalar AsturCut?"
+    StrCpy $3 "Tus proyectos (.astur) y videos seguirán en tu computadora."
+    StrCpy $4 "Borrar también mis preferencias y datos de la app"
+  ${Else}
+    StrCpy $2 "Desinstalar o AsturCut?"
+    StrCpy $3 "Seus projetos (.astur) e vídeos continuam guardados no computador."
+    StrCpy $4 "Apagar também minhas preferências e dados do app"
+  ${EndIf}
+  !insertmacro AsturImage $1 0 0 720 210 banner
+  !insertmacro AsturLabel $5 40 236 640 40 "$2" "FFFFFF" "141416" $AsturFontTitle 0
+  !insertmacro AsturLabel $5 41 280 640 22 "$3" "9A9AA3" "141416" $AsturFontText 0
+  !insertmacro AsturImage $AsturUnSwitch 38 330 44 26 switch_off
+  ${NSD_OnClick} $AsturUnSwitch un.AsturToggleData
+  !insertmacro AsturLabel $5 88 334 520 20 "$4" "D6D6DC" "141416" $AsturFontText 0x100
+  ${NSD_OnClick} $5 un.AsturToggleData
+  !insertmacro AsturImage $5 330 420 150 58 btn_cancel_$AsturLang
+  ${NSD_OnClick} $5 un.AsturCancel
+  !insertmacro AsturImage $5 490 420 210 58 btn_uninstall_$AsturLang
+  ${NSD_OnClick} $5 un.AsturDoUninstall
+  nsDialogs::Show
+FunctionEnd
+Function un.AsturUnWelcomeLeave
+FunctionEnd
+
+Function un.AsturUnFinish
+  IfSilent 0 +2
+    Abort
+  !insertmacro AsturHideChrome
+  nsDialogs::Create 1018
+  Pop $0
+  ${If} $0 == error
+    Abort
+  ${EndIf}
+  SetCtlColors $0 "FFFFFF" "141416"
+  ${If} $AsturLang == "en"
+    StrCpy $2 "AsturCut was removed"
+    StrCpy $3 "Thanks for using AsturCut. Come back anytime!"
+  ${ElseIf} $AsturLang == "es"
+    StrCpy $2 "AsturCut se eliminó"
+    StrCpy $3 "Gracias por usar AsturCut. ¡Vuelve cuando quieras!"
+  ${Else}
+    StrCpy $2 "O AsturCut foi removido"
+    StrCpy $3 "Obrigado por usar o AsturCut. Volte quando quiser!"
+  ${EndIf}
+  !insertmacro AsturImage $1 0 0 720 210 banner
+  !insertmacro AsturLabel $5 40 236 640 40 "$2" "FFFFFF" "141416" $AsturFontTitle 0
+  !insertmacro AsturLabel $5 41 280 640 22 "$3" "9A9AA3" "141416" $AsturFontText 0
+  !insertmacro AsturImage $5 490 420 210 58 btn_done_$AsturLang
+  ${NSD_OnClick} $5 un.AsturDoUninstall
+  nsDialogs::Show
+FunctionEnd
+Function un.AsturUnFinishLeave
+FunctionEnd
+Function un.AsturSkipPage
+  Abort
+FunctionEnd
+!endif
+
+!macro customUnWelcomePage
+  !define MUI_CUSTOMFUNCTION_UNGUIINIT un.AsturGuiInit
+  UninstPage custom un.AsturUnWelcome un.AsturUnWelcomeLeave
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW un.AsturInstShow
+!macroend
+
+!macro customUninstallPage
+  UninstPage custom un.AsturUnFinish un.AsturUnFinishLeave
+  ; pula a página final padrão
+  !define MUI_PAGE_CUSTOMFUNCTION_PRE un.AsturSkipPage
+!macroend
+
+!macro customUnInit
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR\ui"
+  File "${BUILD_RESOURCES_DIR}\installer\banner_*.bmp"
+  File "${BUILD_RESOURCES_DIR}\installer\switch_*.bmp"
+  File "${BUILD_RESOURCES_DIR}\installer\btn_uninstall_*.bmp"
+  File "${BUILD_RESOURCES_DIR}\installer\btn_cancel_*.bmp"
+  File "${BUILD_RESOURCES_DIR}\installer\btn_done_*.bmp"
+  StrCpy $AsturDelData "0"
+  ; idioma: o mesmo escolhido na instalação
+  StrCpy $0 ""
+  ClearErrors
+  FileOpen $1 "$INSTDIR\resources\installer-lang.txt" r
+  ${IfNot} ${Errors}
+    FileRead $1 $0
+    FileClose $1
+  ${EndIf}
+  ${If} $0 == ""
+    StrCpy $0 $LANGUAGE
+  ${EndIf}
+  IntOp $0 $0 & 0x3FF
+  ${If} $0 = 22
+    StrCpy $AsturLang "pt"
+  ${ElseIf} $0 = 10
+    StrCpy $AsturLang "es"
+  ${Else}
+    StrCpy $AsturLang "en"
+  ${EndIf}
 !macroend

@@ -115,5 +115,29 @@ function save(name, w, h, draw) {
   save('btn_open_pt', 210, 58, btn('Abrir o AsturCut'));
   save('btn_open_en', 210, 58, btn('Open AsturCut'));
   save('btn_open_es', 210, 58, btn('Abrir AsturCut'));
+  // desinstalador: botão vermelho, botão secundário e "concluir"
+  const btnDanger = (label) => (x, W, H) => {
+    x.shadowColor = 'rgba(239,68,68,0.4)'; x.shadowBlur = 14; x.shadowOffsetY = 3;
+    const g = x.createLinearGradient(0, 0, W, 0); g.addColorStop(0, '#ef4444'); g.addColorStop(1, '#f43f7a');
+    x.fillStyle = g; x.beginPath(); x.roundRect(8, 6, W - 16, H - 14, 12); x.fill();
+    x.shadowColor = 'transparent';
+    x.fillStyle = '#ffffff'; x.font = '700 17px Inter'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(label, W / 2, H / 2 - 1);
+  };
+  const btnGhost = (label) => (x, W, H) => {
+    x.fillStyle = PANEL; x.strokeStyle = '#3a3a40'; x.lineWidth = 1.5;
+    x.beginPath(); x.roundRect(8, 6, W - 16, H - 14, 12); x.fill(); x.stroke();
+    x.fillStyle = '#d6d6dc'; x.font = '600 16px Inter'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(label, W / 2, H / 2 - 1);
+  };
+  save('btn_uninstall_pt', 210, 58, btnDanger('Desinstalar'));
+  save('btn_uninstall_en', 210, 58, btnDanger('Uninstall'));
+  save('btn_uninstall_es', 210, 58, btnDanger('Desinstalar'));
+  save('btn_cancel_pt', 150, 58, btnGhost('Cancelar'));
+  save('btn_cancel_en', 150, 58, btnGhost('Cancel'));
+  save('btn_cancel_es', 150, 58, btnGhost('Cancelar'));
+  save('btn_done_pt', 210, 58, btn('Concluir'));
+  save('btn_done_en', 210, 58, btn('Done'));
+  save('btn_done_es', 210, 58, btn('Listo'));
   console.log('ok');
 })();
