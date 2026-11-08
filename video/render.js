@@ -20,6 +20,8 @@ const tts = JSON.parse(fs.readFileSync(`${HERE}/tts.json`, 'utf8'));
 const meta = JSON.parse(fs.readFileSync(`${HERE}/shots/meta.json`, 'utf8'));
 meta['wine-dd'] = { file: 'wine-dd.png', w: 1024, h: 700, boxes: {} };
 meta['wine-3'] = { file: 'wine-3.png', w: 1024, h: 700, boxes: {} };
+for (const k of ['inst-welcome', 'inst-progress', 'inst-done']) meta[k] = { file: `${k}.png`, w: 720, h: 490, boxes: {} };
+meta.update = { file: 'update.png', w: 1440, h: 860, boxes: { card: [1043, 582, 378, 258], badge: [15, 684, 203, 62] } };
 
 // ---------- utilidades ----------
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -189,83 +191,49 @@ function poseAt(name, t) {
 }
 
 const dir = (a) => [Math.sin(a), Math.cos(a)];
+// boneco de palito: só traços grossos com o degradê ciano→roxo do logo (sem rosto, sem emblema)
 function stickman(x, cx, footY, t, pose, e, poseName, walk = 0) {
-  const S = 1.0;
-  const bob = Math.sin(t * 2.2) * 4 + (poseName === 'cheer' ? -Math.abs(Math.sin(t * 5)) * 22 : 0);
-  const legLen = 125 * S, torso = 150 * S, armU = 82 * S, armF = 78 * S, headR = 54 * S;
+  const LW = 28;
+  const bob = Math.sin(t * 2.2) * 4 + (poseName === 'cheer' ? -Math.abs(Math.sin(t * 5)) * 22 : 0) - e * 5;
+  const legLen = 122, torso = 150, armU = 84, armF = 80, headR = 52;
   const hipY = footY - legLen * 2 * 0.96 + bob;
   const shY = hipY - torso;
-  const tilt = pose.tilt + Math.sin(t * 1.3) * 0.02;
-  const grad = x.createLinearGradient(cx - 80, shY - 130, cx + 80, footY);
+  const tilt = pose.tilt + Math.sin(t * 1.3) * 0.02 + Math.sin(t * 7) * e * 0.03;
+  const grad = x.createLinearGradient(cx - 90, shY - 140, cx + 90, footY);
   grad.addColorStop(0, ACC); grad.addColorStop(1, VIO);
-  // sombra
-  x.fillStyle = 'rgba(0,0,0,0.35)'; x.beginPath(); x.ellipse(cx, footY + 6, 95, 14, 0, 0, Math.PI * 2); x.fill();
-  // brilho atrás do mascote
-  const glow = x.createRadialGradient(cx, shY + 40, 10, cx, shY + 40, 260);
+  // sombra no chão
+  x.fillStyle = 'rgba(0,0,0,0.35)'; x.beginPath(); x.ellipse(cx, footY + 8, 100, 15, 0, 0, Math.PI * 2); x.fill();
+  // brilho suave atrás
+  const glow = x.createRadialGradient(cx, shY + 40, 10, cx, shY + 40, 280);
   glow.addColorStop(0, 'rgba(28,207,220,0.10)'); glow.addColorStop(1, 'rgba(28,207,220,0)');
-  x.fillStyle = glow; x.fillRect(cx - 260, shY - 220, 520, 520);
-  x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = grad; x.lineWidth = 15 * S;
+  x.fillStyle = glow; x.fillRect(cx - 280, shY - 240, 560, 560);
+  x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = grad; x.lineWidth = LW;
   const seg = (p, a, len) => { const [dx, dy] = dir(a); return [p[0] + dx * len, p[1] + dy * len]; };
-  const line = (a, b) => { x.beginPath(); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]); x.stroke(); };
   const hip = [cx, hipY], sh = [cx + Math.sin(tilt) * torso, shY];
-  // pernas (com passo quando anda)
+  const path = (...pts) => { x.beginPath(); x.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) x.lineTo(p[0], p[1]); x.stroke(); };
+  // pernas
   const sw = walk ? Math.sin(t * 9) * 0.45 : 0;
-  const legs = [[-0.13 + sw, -0.05 + sw * 0.6], [0.13 - sw, 0.05 - sw * 0.6]];
-  for (const [a1, a2] of legs) {
+  for (const [a1, a2] of [[-0.14 + sw, -0.05 + sw * 0.6], [0.14 - sw, 0.05 - sw * 0.6]]) {
     const knee = seg(hip, a1, legLen), foot = seg(knee, a2, legLen);
-    line(hip, knee); line(knee, foot);
-    x.beginPath(); x.moveTo(foot[0], foot[1]); x.lineTo(foot[0] + (a1 < 0 ? -22 : 22), foot[1] + 2); x.stroke();
+    path(hip, knee, foot);
   }
-  line(hip, sh);
+  // tronco
+  path(hip, sh);
   // braços
   const talkG = poseName === 'talk' ? e * 0.55 : poseName === 'idle' ? 0 : e * 0.15;
   const waveG = poseName === 'wave' ? Math.sin(t * 9) * 0.38 : 0;
   const lu = pose.lu + Math.sin(t * 1.7) * 0.05 - talkG * 0.4, lf = pose.lf - talkG;
   const ru = pose.ru + Math.sin(t * 1.5 + 1) * 0.05 + talkG * 0.3, rf = pose.rf + talkG * 0.8 + waveG;
-  const shL = [sh[0] - 4, sh[1] + 10], shR = [sh[0] + 4, sh[1] + 10];
+  const shL = [sh[0], sh[1] + 12], shR = [sh[0], sh[1] + 12];
   const lel = seg(shL, lu, armU), lh = seg(lel, lf, armF);
   const rel = seg(shR, ru, armU), rh = seg(rel, rf, armF);
-  line(shL, lel); line(lel, lh); line(shR, rel); line(rel, rh);
-  x.fillStyle = grad;
-  for (const hnd of [lh, rh]) { x.beginPath(); x.arc(hnd[0], hnd[1], 11, 0, Math.PI * 2); x.fill(); }
-  if (poseName === 'point') { const [dx, dy] = dir(rf); x.lineWidth = 8; line(rh, [rh[0] + dx * 20, rh[1] + dy * 20]); x.lineWidth = 15; }
-  // emblema no peito
-  const chest = [lerp(hip[0], sh[0], 0.62), lerp(hip[1], sh[1], 0.62)];
-  x.fillStyle = '#fff'; x.font = '800 22px Montserrat'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.save(); x.beginPath(); x.arc(chest[0], chest[1], 17, 0, Math.PI * 2); x.fillStyle = grad; x.fill();
-  x.fillStyle = '#fff'; x.fillText('A', chest[0], chest[1] + 1); x.restore();
-  // cabeça
-  const head = [sh[0] + Math.sin(tilt) * 70, sh[1] - headR - 14];
-  x.lineWidth = 15; line(sh, [head[0], head[1] + headR - 4]);
+  path(shL, lel, lh); path(shR, rel, rh);
+  // pescoço e cabeça (círculo cheio, sem rosto)
+  const head = [sh[0] + Math.sin(tilt) * 70, sh[1] - headR - 16];
+  path(sh, [head[0], head[1] + headR - 6]);
   const hg = x.createLinearGradient(head[0] - headR, head[1] - headR, head[0] + headR, head[1] + headR);
   hg.addColorStop(0, ACC); hg.addColorStop(1, VIO);
-  x.save(); x.translate(head[0], head[1]); x.rotate(tilt * 0.8);
-  x.fillStyle = hg; x.beginPath(); x.arc(0, 0, headR, 0, Math.PI * 2); x.fill();
-  x.fillStyle = 'rgba(255,255,255,0.18)'; x.beginPath(); x.ellipse(-18, -22, 20, 12, -0.5, 0, Math.PI * 2); x.fill();
-  // antena
-  x.strokeStyle = VIO; x.lineWidth = 5; x.beginPath(); x.moveTo(8, -headR + 2); x.quadraticCurveTo(18, -headR - 26, 30, -headR - 30); x.stroke();
-  x.fillStyle = ACC; x.beginPath(); x.arc(30, -headR - 30, 7 + Math.sin(t * 4) * 1.5, 0, Math.PI * 2); x.fill();
-  // olhos (piscando) — olhando para a direita (para a tela)
-  const blink = (t % 3.7) < 0.13 || ((t + 1.3) % 6.1) < 0.12;
-  const look = poseName === 'cheer' || poseName === 'wave' ? 0 : 5;
-  for (const ex of [-17, 17]) {
-    x.fillStyle = '#fff';
-    x.beginPath(); x.ellipse(ex + look * 0.4, -6, 11, blink ? 1.5 : 14, 0, 0, Math.PI * 2); x.fill();
-    if (!blink) { x.fillStyle = '#120d2a'; x.beginPath(); x.arc(ex + look, -4, 6.5, 0, Math.PI * 2); x.fill(); x.fillStyle = '#fff'; x.beginPath(); x.arc(ex + look + 2, -7, 2, 0, Math.PI * 2); x.fill(); }
-  }
-  // bochechas
-  x.fillStyle = 'rgba(255,90,170,0.35)';
-  x.beginPath(); x.ellipse(-32, 14, 9, 5, 0, 0, Math.PI * 2); x.fill();
-  x.beginPath(); x.ellipse(32, 14, 9, 5, 0, 0, Math.PI * 2); x.fill();
-  // boca: sincronizada com a voz
-  const open = clamp(e, 0, 1);
-  if (open > 0.08) {
-    x.fillStyle = '#120d2a'; x.beginPath(); x.ellipse(3, 22, 12 + open * 4, 3 + open * 11, 0, 0, Math.PI * 2); x.fill();
-    x.fillStyle = '#ff6fa8'; x.beginPath(); x.ellipse(3, 22 + open * 5, 7, 2 + open * 4, 0, 0, Math.PI); x.fill();
-  } else {
-    x.strokeStyle = '#120d2a'; x.lineWidth = 4.5; x.beginPath(); x.arc(3, 14, 13, 0.25 * Math.PI, 0.75 * Math.PI); x.stroke();
-  }
-  x.restore();
+  x.fillStyle = hg; x.beginPath(); x.arc(head[0], head[1], headR, 0, Math.PI * 2); x.fill();
   return { rh };
 }
 

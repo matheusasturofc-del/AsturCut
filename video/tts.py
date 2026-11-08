@@ -5,11 +5,20 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 scenes = json.loads(subprocess.check_output(['node', '-e', "console.log(JSON.stringify(require('./script.js')))"], cwd=HERE))
 os.makedirs(os.path.join(HERE, 'tts'), exist_ok=True)
 
-from piper import PiperVoice
-from piper.config import SynthesisConfig
-voice = PiperVoice.load(os.path.join(HERE, 'pt_BR-faber-medium.onnx'))
-cfg = SynthesisConfig(length_scale=1.06, noise_scale=0.6, noise_w_scale=0.75)
-SR = voice.config.sample_rate
+import asyncio, edge_tts
+VOICE = 'pt-BR-AntonioNeural'
+PROXY = os.environ.get('HTTPS_PROXY')
+SR = 24000
+
+async def synth(text, mp3):
+    for attempt in range(5):
+        try:
+            await edge_tts.Communicate(text, VOICE, rate='+4%', proxy=PROXY).save(mp3)
+            if os.path.getsize(mp3) > 1000: return
+        except Exception as e:
+            print('  retry', attempt, e, flush=True)
+            await asyncio.sleep(2 + attempt * 2)
+    raise RuntimeError('falha TTS: ' + text)
 
 def split(text):
     parts = re.split(r'(?<=[.!?])\s+', text.strip())
@@ -19,10 +28,11 @@ out = []
 for si, sc in enumerate(scenes):
     sents = []
     for k, s in enumerate(split(sc['text'])):
-        path = os.path.join(HERE, 'tts', f'{si:02d}_{k:02d}.wav')
+        path = os.path.join(HERE, 'tts', f"{sc['id']}_{k:02d}.wav")
         if not os.path.exists(path):
-            with wave.open(path, 'wb') as wf:
-                voice.synthesize_wav(s, wf, syn_config=cfg)
+            mp3 = path.replace('.wav', '.mp3')
+            asyncio.run(synth(s, mp3))
+            subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', mp3, '-af', 'silenceremove=start_periods=1:start_threshold=-50dB,areverse,silenceremove=start_periods=1:start_threshold=-50dB,areverse', '-ac', '1', '-ar', '24000', '-c:a', 'pcm_s16le', path], check=True)
         with wave.open(path, 'rb') as wf:
             dur = wf.getnframes() / wf.getframerate()
         sents.append({'text': s, 'file': path, 'dur': dur})

@@ -42,6 +42,12 @@ const meta = {};
   await wait(300);
   await p.click('.hero-main');
   await wait(600);
+  await p.fill('.np-name', 'Meu primeiro vídeo');
+  await p.click('.np-more summary');
+  await wait(300);
+  await shot('newproject', { modal: '.np-modal', name: '.np-name', formats: '.np-formats', res: '.np-chips', fps: '.np-two', preview: '.np-right', more: '.np-more', create: '.modal-foot .btn.primary' });
+  await p.click('.modal-foot .btn.primary');
+  await wait(600);
   await shot('editor-empty', { library: '#panel-library', player: '#panel-player', inspector: '#panel-inspector', timeline: '#panel-timeline', titlebar: '#titlebar', export: '.tb-btn.export', tabs: '.lib-tabs', import: '.import-zone' });
 
   // ---------- Importar ----------

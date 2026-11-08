@@ -12,19 +12,24 @@ module.exports = [
     text: 'O AsturCut é um editor de vídeo para computador, gratuito, inspirado nos editores profissionais. Ele tem uma linha do tempo com várias trilhas, uma biblioteca cheia de efeitos, filtros, transições, fontes e músicas grátis, e o melhor de tudo: dá para personalizar praticamente tudo, das cores ao lugar de cada painel. E ele fala três idiomas: português, inglês e espanhol.',
   },
   {
-    id: 'install', kind: 'image', image: 'wine-dd.png', pose: 'point', title: 'Instalação',
-    focus: [{ at: 0, box: null, zoom: 1 }, { at: 0.35, box: [436, 362, 210, 64], zoom: 2.2 }],
-    text: 'Para instalar, é só abrir o instalador do AsturCut. A primeira coisa que ele pergunta é o idioma. Você pode escolher entre português brasileiro, inglês ou espanhol. O idioma que você escolher aqui vai ser usado no instalador e também no próprio AsturCut quando ele abrir.',
+    id: 'install', kind: 'image', image: 'inst-welcome.png', pose: 'point', title: 'Instalação',
+    focus: [{ at: 0, box: null, zoom: 1 }, { at: 0.3, box: [36, 280, 480, 70], zoom: 1.8 }, { at: 0.55, box: [36, 352, 650, 60], zoom: 1.6 }, { at: 0.75, box: [36, 418, 420, 34], zoom: 1.8 }, { at: 0.88, box: [488, 418, 214, 62], zoom: 1.8 }],
+    text: 'Para instalar, é só abrir o instalador do AsturCut. Ele tem a mesma cara do editor: escuro, moderno e direto ao ponto. Logo de cara você escolhe o idioma: português, inglês ou espanhol. O AsturCut vai abrir no idioma que você escolher aqui. Depois, se quiser, mude a pasta de instalação no botão alterar, e escolha se quer um atalho na área de trabalho. Aí é só clicar em instalar agora.',
   },
   {
-    id: 'install2', kind: 'image', image: 'wine-3.png', pose: 'talk', title: 'Instalação',
-    focus: [{ at: 0, box: null, zoom: 1 }],
-    text: 'Depois disso, é só seguir as telas: aceitar a licença, escolher se o programa é só para você ou para todos os usuários, e escolher a pasta. O instalador cria atalhos na área de trabalho e no menu iniciar. Uma dica: como o instalador não tem assinatura digital, o Windows pode mostrar um aviso. Nesse caso, clique em mais informações e depois em executar assim mesmo.',
+    id: 'install2', kind: 'image', image: 'inst-done.png', pose: 'cheer', title: 'Instalação',
+    focus: [{ at: 0, box: null, zoom: 1 }, { at: 0.6, box: [488, 420, 214, 62], zoom: 1.8 }],
+    text: 'A instalação leva só alguns segundos, com uma barra de progresso. No final aparece a tela tudo pronto, com o botão abrir o AsturCut. E não precisa de senha de administrador, porque ele instala só para o seu usuário. Uma dica: como o instalador não tem assinatura digital, o Windows pode mostrar um aviso. Nesse caso, clique em mais informações e depois em executar assim mesmo.',
   },
   {
     id: 'home', kind: 'shot', shot: 'home', pose: 'point', title: 'Tela inicial',
     focus: [{ at: 0, box: null, zoom: 1 }, { at: 0.18, box: 'hero', zoom: 1.4 }, { at: 0.45, box: 'chips', zoom: 2.2 }, { at: 0.68, box: 'quick', zoom: 1.5 }, { at: 0.88, box: 'side', zoom: 1.6 }],
     text: 'Quando você abre o AsturCut, aparece a tela inicial. Ela foi feita para ser simples e direta. Aqui em cima tem o grande botão criar projeto. Ao lado dele, você pode criar já no formato certo: dezesseis por nove para o YouTube, nove por dezesseis para Reels e TikTok, quadrado para o Instagram, ou quatro por cinco para o feed. Logo abaixo, no começar rápido, você abre um projeto salvo, importa mídias, ou usa um modelo pronto. E na lateral fica o menu, a escolha do idioma e o botão personalizar.',
+  },
+  {
+    id: 'newproject', kind: 'shot', shot: 'newproject', pose: 'point', title: 'Criando um projeto',
+    focus: [{ at: 0, box: 'modal', zoom: 1.1 }, { at: 0.06, box: 'name', zoom: 2 }, { at: 0.16, box: 'formats', zoom: 1.7 }, { at: 0.42, box: 'res', zoom: 2.2 }, { at: 0.66, box: 'more', zoom: 1.8 }, { at: 0.86, box: 'preview', zoom: 1.8 }],
+    text: 'Quando você clica em criar projeto, abre a tela de definições. Primeiro dê um nome ao projeto. Depois escolha o formato do vídeo: dezesseis por nove, nove por dezesseis, quadrado, quatro por cinco, clássico, cinema, ou um tamanho personalizado, digitando a largura e a altura. Em seguida, a resolução, de HD até 4K, e os quadros por segundo: vinte e quatro para um visual de cinema, trinta como padrão, ou sessenta para vídeos de games bem suaves. Você também escolhe o fundo, e em mais opções pode ligar a trilha magnética, salvar o projeto logo de cara, e usar essas escolhas como padrão. A prévia ao lado mostra o tamanho do quadro. Depois é só clicar em criar projeto.',
   },
   {
     id: 'templates', kind: 'shot', shot: 'templates', pose: 'cheer', title: 'Modelos prontos',
@@ -160,6 +165,11 @@ module.exports = [
     id: 'save', kind: 'shot', shot: 'home-continue', pose: 'talk', title: 'Salvar e continuar depois',
     focus: [{ at: 0, box: null, zoom: 1 }, { at: 0.5, box: 'cont', zoom: 2.4 }],
     text: 'Não esqueça de salvar com control mais S. O projeto vira um arquivo ponto astur, e aparece na tela inicial com miniatura, para você continuar depois. O AsturCut também salva automaticamente de tempos em tempos e, se o computador desligar de repente, ele oferece recuperar o projeto que não foi salvo.',
+  },
+  {
+    id: 'updates', kind: 'shot', shot: 'update', pose: 'point', title: 'Atualizações automáticas',
+    focus: [{ at: 0, box: null, zoom: 1 }, { at: 0.2, box: 'card', zoom: 1.7 }, { at: 0.62, box: 'badge', zoom: 2.2 }],
+    text: 'E quando sair uma versão nova do AsturCut, você nem precisa procurar: o próprio app avisa. Aparece o cartão nova atualização disponível, com as novidades da versão. É só clicar em atualizar agora para baixar o instalador novo. Ele instala por cima e mantém todos os seus projetos e preferências. Na tela inicial também aparece um aviso de atualização na barra lateral, e no menu você pode verificar atualizações quando quiser.',
   },
   {
     id: 'tips', kind: 'list', pose: 'think', title: 'Resumo dos atalhos',
