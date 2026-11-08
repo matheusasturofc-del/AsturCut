@@ -5,3 +5,10 @@ out/
 src/renderer/assets/fonts/
 .DS_Store
 Thumbs.db
+video/*.mp4
+video/shots/
+video/tts/
+video/audio/
+video/node_modules/
+video/*.onnx*
+video/mix.wav
