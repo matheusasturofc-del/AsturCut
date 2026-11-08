@@ -16,7 +16,7 @@ export function fastSupported() {
   return typeof VideoEncoder !== 'undefined' && !!(api && api.fxBegin);
 }
 
-async function decodeMedia(m) {
+export async function decodeMedia(m) {
   if (decoded.has(m.id)) return decoded.get(m.id);
   let buf = null;
   try {

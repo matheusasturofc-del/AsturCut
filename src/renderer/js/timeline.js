@@ -6,6 +6,7 @@ import { settings } from './settings.js';
 import { player, pause } from './player.js';
 import { handleDrop } from './actions.js';
 import { keyTimes } from './keyframes.js';
+import { removeSilencesDialog } from './silence.js';
 import { labelMenu, speedDialog, gainDialog, copyAttributes, pasteAttributesDialog, hasAttributes } from './editTools.js';
 import { openMixer } from './audiomix.js';
 import { openSource } from './source.js';
@@ -39,6 +40,8 @@ export function initTimeline() {
     btn('duplicate', 'Duplicar (Ctrl+D)', () => store.duplicate()),
     btn('detach', 'Separar áudio', () => { const c = store.primarySelected(); if (c?.type === 'video') { store.detachAudio(c.id); toast('Áudio separado', 'success'); } else toast('Selecione um vídeo', 'error'); }),
     btn('marker', 'Adicionar marcador (M)', () => store.addMarker()),
+    el('div', { class: 'tb-sep' }),
+    btn('silence', 'Tirar silêncios automaticamente', () => removeSilencesDialog()),
     el('div', { class: 'grow' }),
     btn('mixer', 'Mixer de áudio (efeitos por trilha)', () => openMixer()),
     el('div', { class: 'tb-sep' }),
@@ -397,6 +400,7 @@ export function clipMenu(x, y, c) {
     { label: 'Velocidade', submenu: [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5].map((s) => ({ label: s + 'x', checked: (c.speed || 1) === s, onClick: () => setSpeed(c, s) })) },
     { label: 'Velocidade e duração...', shortcut: 'Ctrl+R', onClick: () => speedDialog() },
     hasAudio(c) ? { label: 'Ganho de áudio...', shortcut: 'G', onClick: () => gainDialog() } : null,
+    hasAudio(c) ? { label: 'Tirar silêncios...', onClick: () => removeSilencesDialog() } : null,
     { label: 'Rótulo', submenu: labelMenu() },
     linked ? { label: 'Desvincular áudio e vídeo', onClick: () => store.unlink() } : multi ? { label: 'Vincular clipes', onClick: () => store.link() } : null,
     c.mediaId && store.media(c.mediaId) && store.media(c.mediaId).type !== 'image' ? { label: 'Abrir no visualizador de origem', onClick: () => openSource(store.media(c.mediaId)) } : null,
