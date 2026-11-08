@@ -15,6 +15,8 @@ import { t, initLang, detectLang, startAutoTranslate } from './i18n.js';
 import { saveProject, newProject, openProject, confirmDiscard, getRecent, scheduleRecovery, clearRecovery, defaultName } from './projects.js';
 import { showHome, hideHome, isHomeVisible } from './home.js';
 import { actionFor, GLOBAL } from './keymap.js';
+import { openNewProjectDialog } from './newProject.js';
+import { checkForUpdates, startUpdateChecks } from './updates.js';
 import { speedDialog, gainDialog, setLabel, LABELS, pasteAttributesDialog } from './editTools.js';
 import { openMixer } from './audiomix.js';
 
@@ -58,7 +60,7 @@ function recentItems() {
 
 function mainMenu(anchor) {
   dropdownFrom(anchor, [
-    { label: t('Novo projeto'), shortcut: 'Ctrl+N', onClick: () => newProject() },
+    { label: t('Novo projeto'), shortcut: 'Ctrl+N', onClick: () => openNewProjectDialog() },
     { label: t('Abrir projeto...'), shortcut: 'Ctrl+O', onClick: () => openProject() },
     isDesktop ? { label: t('Projetos recentes'), submenu: recentItems() } : null,
     { label: t('Salvar'), shortcut: 'Ctrl+S', onClick: () => saveProject() },
@@ -76,6 +78,7 @@ function mainMenu(anchor) {
     { label: t('Personalizar...'), shortcut: 'Ctrl+,', onClick: () => openCustomize('theme') },
     { label: t('Atalhos do teclado'), onClick: () => openCustomize('keys') },
     { label: t('Tela inicial'), onClick: () => showHome() },
+    isDesktop ? { label: t('Verificar atualizações...'), onClick: () => checkForUpdates({ manual: true }) } : null,
     { label: t('Sobre o AsturCut'), onClick: () => openCustomize('about') },
     isDesktop ? '-' : null,
     isDesktop ? { label: t('Sair'), onClick: () => api.close() } : null,
@@ -169,7 +172,7 @@ const ACTION_FN = {
   save: () => saveProject(),
   saveAs: () => saveProject(true),
   open: () => openProject(),
-  new: () => newProject(),
+  new: () => openNewProjectDialog(),
   import: () => importViaDialog(),
   export: () => openExportDialog(),
   customize: () => openCustomize('theme'),
@@ -200,7 +203,7 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('dragover', (e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); });
 document.addEventListener('drop', (e) => {
   if (e.defaultPrevented) return;
-  if (e.dataTransfer?.files?.length) { e.preventDefault(); if (isHomeVisible()) { newProject().then((ok) => ok && importDropped(e.dataTransfer.files)); } else importDropped(e.dataTransfer.files); }
+  if (e.dataTransfer?.files?.length) { e.preventDefault(); if (isHomeVisible()) { openNewProjectDialog().then((ok) => ok && importDropped(e.dataTransfer.files)); } else importDropped(e.dataTransfer.files); }
 });
 document.addEventListener('contextmenu', (e) => { if (!isTyping(e)) e.preventDefault(); });
 
@@ -218,6 +221,7 @@ async function boot() {
   initInspector();
   startAutoTranslate();
   loadUserFonts();
+  if (isDesktop) startUpdateChecks();
   bus.on('change', () => { updateTitle(); scheduleRecovery(); });
   bus.on('project', updateTitle);
   bus.on('project-name', updateTitle);

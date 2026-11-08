@@ -170,6 +170,21 @@ ipcMain.handle('app:info', () => ({
 }));
 ipcMain.on('app:set-lang', (_e, l) => { if (L[l]) lang = l; });
 
+// ---------- Atualizações: consulta a última versão publicada no GitHub ----------
+const UPDATE_REPO = 'matheusasturofc-del/AsturCut';
+ipcMain.handle('app:check-update', async () => {
+  const { net } = require('electron');
+  const r = await net.fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, { headers: { 'User-Agent': 'AsturCut-Updater', Accept: 'application/vnd.github+json' } });
+  if (!r.ok) return { ok: false, status: r.status, current: app.getVersion() };
+  const j = await r.json();
+  const exe = (j.assets || []).find((a) => /\.exe$/i.test(a.name) && !/blockmap/i.test(a.name));
+  return {
+    ok: true, current: app.getVersion(),
+    version: String(j.tag_name || '').replace(/^v/i, ''), name: j.name || j.tag_name,
+    notes: j.body || '', date: j.published_at, page: j.html_url, download: exe ? exe.browser_download_url : j.html_url,
+  };
+});
+
 // ---------- IPC: arquivos ----------
 const MEDIA_EXT = ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'ogv', 'mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
 

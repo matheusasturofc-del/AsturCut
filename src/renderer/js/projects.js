@@ -81,15 +81,17 @@ export function defaultName() {
 }
 
 // cria um projeto novo (opcionalmente com proporção). Retorna false se o usuário cancelou.
-export async function newProject({ name, aspect } = {}) {
+export async function newProject({ name, aspect, width, height, fps, background, bgMode } = {}) {
   if (!(await confirmDiscard())) return false;
   pause();
   store.newProject(name || defaultName());
-  if (aspect && ASPECTS[aspect]) {
-    const [w, h] = ASPECTS[aspect];
-    Object.assign(store.p.settings, { width: w, height: h, aspect });
-    bus.emit('settings-project');
-  }
+  const st = store.p.settings;
+  if (aspect && ASPECTS[aspect]) { const [w, h] = ASPECTS[aspect]; Object.assign(st, { width: w, height: h, aspect }); }
+  if (width && height) Object.assign(st, { width, height, aspect: aspect || st.aspect });
+  if (fps) st.fps = fps;
+  if (background) st.background = background;
+  if (bgMode) st.bgMode = bgMode;
+  bus.emit('settings-project');
   bus.emit('title');
   bus.emit('enter-editor');
   return true;

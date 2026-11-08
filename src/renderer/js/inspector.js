@@ -375,7 +375,7 @@ function adjustTab(c) {
     s('Realces', 'highlights'), s('Sombras', 'shadows'), s('Brancos', 'whites'), s('Pretos', 'blacks'),
   ));
   bodyEl.append(section('Cor',
-    s('Saturação', 'saturation'), s('Temperatura', 'temperature'), s('Matiz (tint)', 'tint'), s('Tonalidade', 'hue'),
+    s('Saturação', 'saturation'), s('Temperatura', 'temperature'), s('Tonalidade (verde ↔ magenta)', 'tint'), s('Matiz (girar cores)', 'hue'),
   ));
   bodyEl.append(section('Efeitos',
     s('Nitidez', 'sharpen', 0, 100), s('Desfoque', 'blur', 0, 100), s('Vinheta', 'vignette', 0, 100),

@@ -4,10 +4,13 @@ import { $, el, icon, contextMenu, fmtShort } from './util.js';
 import { settings } from './settings.js';
 import { importViaDialog, addBackground, drawBackground, isDesktop, api } from './media.js';
 import { addMedia, addText, addShape, addSticker, applyEffect, addAudio } from './actions.js';
+import { openNewProjectDialog } from './newProject.js';
 import { newProject, openProject, getRecent, removeRecent, getRecovery, recover, clearRecovery } from './projects.js';
 import { openCustomize } from './customize.js';
 import { t, LANG, LANGS, locale, saveLang } from './i18n.js';
 import { toast, confirmDialog } from './util.js';
+import { latest, openUpdate } from './updates.js';
+bus.on('update-available', () => { if (document.body.classList.contains('home-mode')) render(); });
 
 let page = 'home';
 let query = '';
@@ -175,6 +178,7 @@ function sidebar() {
     el('div', { class: 'grow' }),
     store.p.clips.length ? el('button', { class: 'hs-continue', onclick: hideHome },
       el('span', { class: 'hs-dot' }), el('div', {}, el('small', {}, t('Continuar editando')), el('b', { class: 'no-tr' }, store.p.name))) : null,
+    latest ? el('button', { class: 'hs-update', onclick: () => openUpdate() }, el('span', { html: icon('sparkle', 15) }), el('div', {}, el('b', {}, t('Atualização disponível')), el('small', {}, t('Versão {v} — clique para baixar', { v: latest.version })))) : null,
     el('div', { class: 'hs-bottom' },
       el('label', { class: 'hs-lang-wrap', html: icon('globe', 16) }, langSel),
       el('button', { class: 'hs-item', onclick: () => openCustomize('theme'), html: icon('palette', 17) + `<span>${t('Personalizar')}</span>` })),
@@ -196,10 +200,10 @@ function hero() {
   const chips = [['16:9', 'YouTube'], ['9:16', 'Reels · TikTok'], ['1:1', 'Instagram'], ['4:5', 'Feed']];
   const box = el('div', { class: 'hero' },
     el('div', { class: 'hero-deco', html: '<i></i><i></i><i></i><i></i><i></i><span></span>' }),
-    el('button', { class: 'hero-main', onclick: () => newProject() },
+    el('button', { class: 'hero-main', onclick: () => openNewProjectDialog() },
       el('span', { class: 'hero-plus', html: icon('plus', 26) }),
       el('div', {}, el('div', { class: 'hero-title' }, t('Criar projeto')), el('div', { class: 'hero-sub' }, t('Comece um novo vídeo do zero')))),
-    el('div', { class: 'hero-chips' }, chips.map(([a, n]) => el('button', { class: 'hero-chip', onclick: () => newProject({ aspect: a }) }, el('span', { class: 'ar ar-' + a.replace(':', '-') }), el('b', {}, a), el('small', {}, n)))),
+    el('div', { class: 'hero-chips' }, chips.map(([a, n]) => el('button', { class: 'hero-chip', onclick: () => openNewProjectDialog({ aspect: a }) }, el('span', { class: 'ar ar-' + a.replace(':', '-') }), el('b', {}, a), el('small', {}, n)))),
   );
   return box;
 }
@@ -223,7 +227,7 @@ function homePage() {
     el('div', { class: 'home-section' }, el('h2', {}, t('Começar rápido'))),
     el('div', { class: 'quick-row' },
       quickCard('folder', t('Abrir projeto'), t('Abra um arquivo .astur'), () => openProject()),
-      quickCard('import', t('Importar mídia'), t('Comece pelos seus vídeos e fotos'), async () => { if (await newProject()) importViaDialog(); }),
+      quickCard('import', t('Importar mídia'), t('Comece pelos seus vídeos e fotos'), async () => { if (await openNewProjectDialog()) importViaDialog(); }),
       quickCard('sparkle', t('Intro animada'), t('Título com gradiente, animação e efeito sonoro'), () => useTemplate(TEMPLATES[0])),
       quickCard('image', t('Slideshow de fotos'), t('Escolha suas fotos: transições e música automáticas'), () => useTemplate(TEMPLATES[1])),
     ),
@@ -241,7 +245,7 @@ function projectsPage() {
     el('div', { class: 'page-head' }, el('h1', {}, t('Projetos')), el('div', { class: 'grow' }),
       el('div', { class: 'home-search', html: icon('search', 14) }, search),
       el('button', { class: 'btn', onclick: () => openProject(), html: icon('folder', 14) + `<span>${t('Abrir projeto')}</span>` }),
-      el('button', { class: 'btn primary', onclick: () => newProject(), html: icon('plus', 14) + `<span>${t('Criar projeto')}</span>` })),
+      el('button', { class: 'btn primary', onclick: () => openNewProjectDialog(), html: icon('plus', 14) + `<span>${t('Criar projeto')}</span>` })),
     projectGrid(list, !!query),
   ];
 }

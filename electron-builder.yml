@@ -25,22 +25,20 @@ win:
   icon: build/icon.ico
   artifactName: AsturCut-Setup-${version}.${ext}
 nsis:
+  # instalador moderno: telas próprias (build/installer.nsh): boas-vindas -> progresso -> tudo pronto
   oneClick: false
   perMachine: false
-  allowElevation: true
-  allowToChangeInstallationDirectory: true
-  createDesktopShortcut: always
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: false   # o atalho é opcional, escolhido na tela do instalador
   createStartMenuShortcut: true
   shortcutName: AsturCut
-  runAfterFinish: true
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
   installerHeaderIcon: build/icon.ico
   deleteAppDataOnUninstall: false
-  # Escolha de idioma no início da instalação: Português, English, Español
-  displayLanguageSelector: true
-  installerLanguages: [pt_BR, en_US, es_ES]
   multiLanguageInstaller: true
+  installerLanguages: [en_US, pt_BR, es_ES]
+  warningsAsErrors: false
   include: build/installer.nsh
 linux:
   target: [AppImage]

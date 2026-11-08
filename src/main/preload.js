@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('astur', {
   toggleFullscreen: () => ipcRenderer.send('win:fullscreen'),
   info: () => ipcRenderer.invoke('app:info'),
   setLang: (l) => ipcRenderer.send('app:set-lang', l),
+  checkUpdate: () => ipcRenderer.invoke('app:check-update'),
   importMedia: () => ipcRenderer.invoke('dialog:import-media'),
   importFonts: () => ipcRenderer.invoke('dialog:import-fonts'),
   describeFiles: (paths) => ipcRenderer.invoke('file:describe', paths),

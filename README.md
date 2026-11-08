@@ -14,9 +14,31 @@ O instalador do Windows é gerado automaticamente pelo GitHub Actions a cada pus
 
 > Para gerar uma **Release** com o `.exe` anexado, crie uma tag `v1.0.0` (por exemplo) e envie: `git tag v1.0.0 && git push origin v1.0.0`.
 
-Ao abrir o instalador, escolha o idioma: **Português, English ou Español**. O AsturCut abre no idioma escolhido, e dá para trocar depois na tela inicial ou em *Personalizar → Aparência*.
+O instalador tem visual moderno e escuro: na primeira tela você escolhe o idioma (**Português, English ou Español**), a pasta e se quer atalho na área de trabalho, e clica em **Instalar agora**. No final, o botão **Abrir o AsturCut** já abre o editor. O AsturCut abre no idioma escolhido, e dá para trocar depois na tela inicial ou em *Personalizar → Aparência*.
 
 Como o instalador não é assinado digitalmente, o Windows SmartScreen pode mostrar um aviso. Clique em **Mais informações → Executar assim mesmo**.
+
+## Como atualizar
+
+O AsturCut avisa sozinho quando sai uma versão nova: aparece **"Nova atualização disponível!"** com o botão **Atualizar agora**, que baixa o instalador mais recente. Também dá para verificar em *Menu → Verificar atualizações...*.
+
+Para atualizar, é só abrir o instalador novo. Ele instala por cima e mantém seus projetos, preferências e fontes.
+
+### Publicar uma versão nova (para quem desenvolve)
+
+1. Mude a versão em `package.json` (por exemplo, `1.3.0`).
+2. Faça o commit e envie.
+3. Crie e envie a tag da versão:
+
+```bash
+git tag v1.3.0
+```
+
+```bash
+git push origin v1.3.0
+```
+
+O GitHub Actions gera o instalador e publica uma **Release** com o `.exe`. A partir daí, todos que têm o AsturCut veem o aviso de atualização.
 
 ## Recursos
 

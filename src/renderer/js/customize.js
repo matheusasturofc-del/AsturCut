@@ -211,6 +211,7 @@ function aboutPane(p) {
     el('h2', {}, 'AsturCut'),
     el('div', { class: 'muted', id: 'about-version' }, 'Editor de vídeo para PC'),
     el('p', {}, 'Editor de vídeo completo e gratuito: múltiplas trilhas, textos, stickers, efeitos, filtros, transições, animações, biblioteca de áudio e fontes grátis — tudo personalizável.'),
+    window.astur ? el('button', { class: 'btn', onclick: () => import('./updates.js').then((m) => m.checkForUpdates({ manual: true })) }, t('Verificar atualizações...')) : null,
     el('p', { class: 'muted small' }, 'Fontes: Google Fonts (licença OFL/Apache). Áudios da biblioteca gerados por síntese — livres de direitos. Conversão de vídeo com FFmpeg (LGPL/GPL).'),
   ));
   window.astur?.info?.().then((i) => { const v = document.getElementById('about-version'); if (v) v.textContent = t('Versão {v} · {p}', { v: i.version, p: i.platform }); });
