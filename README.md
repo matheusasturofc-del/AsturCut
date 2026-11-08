@@ -26,19 +26,10 @@ Para atualizar, é só abrir o instalador novo. Ele instala por cima e mantém s
 
 ### Publicar uma versão nova (para quem desenvolve)
 
-1. Mude a versão em `package.json` (por exemplo, `1.3.0`).
-2. Faça o commit e envie.
-3. Crie e envie a tag da versão:
+1. Mude a versão em `package.json` (por exemplo, `1.3.0`), faça o commit e envie.
+2. No GitHub, abra **Actions → Gerar instalador → Run workflow**, deixe marcado **"Publicar uma Release"** e clique em **Run workflow**.
 
-```bash
-git tag v1.3.0
-```
-
-```bash
-git push origin v1.3.0
-```
-
-O GitHub Actions gera o instalador e publica uma **Release** com o `.exe`. A partir daí, todos que têm o AsturCut veem o aviso de atualização.
+Em poucos minutos sai a **Release** `v1.3.0` com o instalador `.exe`, e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.3.0` também funciona.
 
 ## Recursos
 
