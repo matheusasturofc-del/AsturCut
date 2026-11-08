@@ -70,6 +70,9 @@ export async function importDropped(fileList) {
   return addBrowserFiles(files);
 }
 
+// importa arquivos do disco pelo caminho (ex.: gravações)
+export async function importPaths(paths) { return addDesktopFiles(await api.describeFiles(paths)); }
+
 async function addDesktopFiles(files) {
   const added = [];
   for (const f of files) {

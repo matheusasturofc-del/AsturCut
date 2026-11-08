@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+<title>AsturCut REC</title>
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; font-family: 'Segoe UI', system-ui, sans-serif; user-select: none; overflow: hidden; }
+  .bar { position: absolute; inset: 4px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px; border-radius: 14px;
+    background: rgba(20,20,22,.94); border: 1px solid rgba(255,255,255,.08); box-shadow: 0 6px 24px rgba(0,0,0,.45); color: #fff; -webkit-app-region: drag; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 10px #ef4444; animation: blink 1s infinite; }
+  .paused .dot { animation: none; background: #f5b04c; box-shadow: none; }
+  .time { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 64px; }
+  .grow { flex: 1; }
+  button { -webkit-app-region: no-drag; border: 0; border-radius: 9px; padding: 7px 12px; font: 600 12.5px 'Segoe UI', system-ui, sans-serif; cursor: pointer; color: #fff; background: rgba(255,255,255,.1); }
+  button:hover { background: rgba(255,255,255,.18); }
+  .stop { background: #ef4444; }
+  .stop:hover { background: #f05a5a; }
+  .stop::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: #fff; margin-right: 7px; vertical-align: -1px; }
+  @keyframes blink { 50% { opacity: .35; } }
+</style>
+</head>
+<body>
+  <div class="bar" id="bar">
+    <div class="dot"></div>
+    <div class="time" id="time">00:00</div>
+    <div class="grow"></div>
+    <button id="pause"></button>
+    <button class="stop" id="stop"></button>
+  </div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const L = { stop: q.get('stop') || 'Parar', pause: q.get('pause') || 'Pausar', resume: q.get('resume') || 'Continuar' };
+  const $ = (id) => document.getElementById(id);
+  $('stop').textContent = L.stop;
+  $('pause').textContent = L.pause;
+  let paused = false;
+  $('stop').onclick = () => window.recbar.control('stop');
+  $('pause').onclick = () => window.recbar.control(paused ? 'resume' : 'pause');
+  window.recbar.onTick(({ secs, paused: p }) => {
+    paused = p;
+    const m = Math.floor(secs / 60), s = Math.floor(secs % 60);
+    $('time').textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    $('pause').textContent = p ? L.resume : L.pause;
+    $('bar').classList.toggle('paused', p);
+  });
+</script>
+</body>
+</html>

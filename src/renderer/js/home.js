@@ -10,6 +10,7 @@ import { openCustomize } from './customize.js';
 import { t, LANG, LANGS, locale, saveLang } from './i18n.js';
 import { toast, confirmDialog } from './util.js';
 import { latest, openUpdate } from './updates.js';
+import { openRecorder } from './recorder.js';
 bus.on('update-available', () => { if (document.body.classList.contains('home-mode')) render(); });
 
 let page = 'home';
@@ -228,6 +229,7 @@ function homePage() {
     el('div', { class: 'quick-row' },
       quickCard('folder', t('Abrir projeto'), t('Abra um arquivo .astur'), () => openProject()),
       quickCard('import', t('Importar mídia'), t('Comece pelos seus vídeos e fotos'), async () => { if (await openNewProjectDialog()) importViaDialog(); }),
+      isDesktop ? quickCard('record', t('Gravar tela'), t('Tela, webcam e narração em um clique'), async () => { if (await openNewProjectDialog()) openRecorder(); }) : null,
       quickCard('sparkle', t('Intro animada'), t('Título com gradiente, animação e efeito sonoro'), () => useTemplate(TEMPLATES[0])),
       quickCard('image', t('Slideshow de fotos'), t('Escolha suas fotos: transições e música automáticas'), () => useTemplate(TEMPLATES[1])),
     ),

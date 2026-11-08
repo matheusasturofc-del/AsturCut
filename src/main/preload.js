@@ -31,8 +31,14 @@ contextBridge.exposeInMainWorld('astur', {
   fxVideo: (buf) => ipcRenderer.invoke('fx:video', buf),
   fxAudio: (buf) => ipcRenderer.invoke('fx:audio', buf),
   fxEnd: (o) => ipcRenderer.invoke('fx:end', o),
+  recSources: () => ipcRenderer.invoke('rec:sources'),
+  recSelect: (o) => ipcRenderer.invoke('rec:select', o),
+  recStarted: (o) => ipcRenderer.invoke('rec:started', o),
+  recStopped: () => ipcRenderer.invoke('rec:stopped'),
+  recTick: (info) => ipcRenderer.send('rec:tick', info),
+  recSave: (o) => ipcRenderer.invoke('rec:save', o),
   on: (channel, cb) => {
-    const allowed = ['win:state', 'export:progress', 'project:open-file', 'app:before-close'];
+    const allowed = ['win:state', 'export:progress', 'project:open-file', 'app:before-close', 'rec:control'];
     if (!allowed.includes(channel)) return () => {};
     const fn = (_e, data) => cb(data);
     ipcRenderer.on(channel, fn);

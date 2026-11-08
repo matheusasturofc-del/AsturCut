@@ -1,5 +1,5 @@
 // AsturCut — processo principal do Electron
-const { app, BrowserWindow, ipcMain, dialog, protocol, shell, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol, shell, screen, desktopCapturer, session, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -196,6 +196,7 @@ if (!gotLock) {
   app.whenReady().then(() => {
     pendingOpenFile = fileFromArgv(process.argv);
     handleMediaProtocol();
+    setupCapture();
     createSplash();
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
@@ -458,4 +459,78 @@ ipcMain.handle('fx:end', async (e, opts) => {
     fxCleanup(job);
   }
   return outPath;
+});
+
+// ---------- Gravação de tela, webcam e microfone ----------
+let recSourceId = null, recSystemAudio = false, recBar = null;
+
+function setupCapture() {
+  // getDisplayMedia: usa a tela/janela escolhida na janela de gravação do AsturCut
+  session.defaultSession.setDisplayMediaRequestHandler(async (_req, cb) => {
+    try {
+      const srcs = await desktopCapturer.getSources({ types: ['screen', 'window'] });
+      const s = srcs.find((x) => x.id === recSourceId) || srcs[0];
+      cb(s ? { video: s, ...(recSystemAudio && process.platform === 'win32' ? { audio: 'loopback' } : {}) } : {});
+    } catch { cb({}); }
+  });
+  session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(['media', 'display-capture', 'fullscreen', 'clipboard-sanitized-write'].includes(perm)));
+  session.defaultSession.setPermissionCheckHandler((_wc, perm) => ['media', 'display-capture', 'fullscreen', 'clipboard-sanitized-write'].includes(perm));
+}
+
+ipcMain.handle('rec:sources', async () => {
+  const srcs = await Promise.race([
+    desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 }, fetchWindowIcons: false }),
+    new Promise((res) => setTimeout(() => res([]), 10000)),
+  ]);
+  return srcs
+    .filter((s) => !(win && s.id === win.getMediaSourceId()) && !/^AsturCut/.test(s.name) || s.id.startsWith('screen'))
+    .map((s) => ({ id: s.id, name: s.name, screen: s.id.startsWith('screen'), thumb: s.thumbnail.isEmpty() ? '' : s.thumbnail.toDataURL() }));
+});
+
+ipcMain.handle('rec:select', (_e, { id, systemAudio }) => { recSourceId = id; recSystemAudio = !!systemAudio; return true; });
+
+const REC_BAR_TEXT = { pt: ['Parar', 'Pausar', 'Continuar'], en: ['Stop', 'Pause', 'Resume'], es: ['Detener', 'Pausar', 'Continuar'] };
+ipcMain.handle('rec:started', (_e, { hide }) => {
+  if (hide && win) win.minimize();
+  const wa = screen.getPrimaryDisplay().workArea;
+  recBar = new BrowserWindow({
+    width: 300, height: 56, x: Math.round(wa.x + wa.width / 2 - 150), y: wa.y + 16,
+    frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true, transparent: true, hasShadow: false, focusable: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(__dirname, 'recbar-preload.js') },
+  });
+  recBar.setAlwaysOnTop(true, 'screen-saver');
+  try { recBar.setContentProtection(true); } catch {} // não aparece na gravação
+  const [stop, pause, resume] = REC_BAR_TEXT[lang] || REC_BAR_TEXT.pt;
+  recBar.loadFile(path.join(__dirname, 'recbar.html'), { query: { stop, pause, resume } });
+  globalShortcut.register('CommandOrControl+Shift+F9', () => win && win.webContents.send('rec:control', 'stop'));
+  return true;
+});
+
+ipcMain.on('recbar:control', (_e, what) => { if (win) win.webContents.send('rec:control', what); });
+ipcMain.on('rec:tick', (_e, info) => { if (recBar && !recBar.isDestroyed()) recBar.webContents.send('recbar:tick', info); });
+
+ipcMain.handle('rec:stopped', () => {
+  try { globalShortcut.unregister('CommandOrControl+Shift+F9'); } catch {}
+  if (recBar && !recBar.isDestroyed()) recBar.close();
+  recBar = null;
+  if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+  return true;
+});
+
+// salva cada gravação (webm do MediaRecorder) e corrige a duração/índice com o FFmpeg
+ipcMain.handle('rec:save', async (_e, { name, buffer }) => {
+  const dir = path.join(app.getPath('documents'), 'AsturCut', lang === 'en' ? 'Recordings' : lang === 'es' ? 'Grabaciones' : 'Gravações');
+  await fs.promises.mkdir(dir, { recursive: true });
+  const safe = String(name || 'gravacao').replace(/[\\/:*?"<>|]/g, '-');
+  const raw = path.join(os.tmpdir(), `asturcut-rec-${Date.now()}-${Math.random().toString(36).slice(2)}.webm`);
+  const out = path.join(dir, safe + '.webm');
+  await fs.promises.writeFile(raw, Buffer.from(buffer));
+  const ok = await new Promise((resolve) => {
+    const proc = spawn(ffmpegPath(), ['-y', '-i', raw, '-c', 'copy', out], { windowsHide: true });
+    proc.on('error', () => resolve(false));
+    proc.on('close', (code) => resolve(code === 0));
+  });
+  if (!ok) await fs.promises.copyFile(raw, out);
+  fs.promises.unlink(raw).catch(() => {});
+  return out;
 });

@@ -19,6 +19,9 @@ import { openNewProjectDialog } from './newProject.js';
 import { checkForUpdates, startUpdateChecks } from './updates.js';
 import { speedDialog, gainDialog, setLabel, LABELS, pasteAttributesDialog } from './editTools.js';
 import { openMixer } from './audiomix.js';
+import { openRecorder } from './recorder.js';
+import { openCaptionsDialog } from './captions.js';
+import { removeSilencesDialog } from './silence.js';
 
 // ---------- Barra de título ----------
 function buildTitlebar() {
@@ -73,6 +76,9 @@ function mainMenu(anchor) {
     { label: t('Refazer'), shortcut: 'Ctrl+Y', onClick: () => store.redo() },
     '-',
     { label: t('Mixer de áudio'), shortcut: 'Ctrl+Alt+M', onClick: () => openMixer() },
+    isDesktop ? { label: t('Gravar tela e webcam...'), onClick: () => openRecorder() } : null,
+    { label: t('Legendas automáticas...'), onClick: () => openCaptionsDialog() },
+    { label: t('Tirar silêncios...'), onClick: () => removeSilencesDialog() },
     { label: t('Maximizar painel sob o mouse'), shortcut: '`', onClick: () => toggleMaximize() },
     '-',
     { label: t('Personalizar...'), shortcut: 'Ctrl+,', onClick: () => openCustomize('theme') },

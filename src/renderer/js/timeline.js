@@ -1,13 +1,14 @@
 // Linha do tempo: trilhas, clipes, arrastar/aparar/dividir, régua, zoom e soltar da biblioteca
 import { store, bus } from './store.js';
 import { $, el, icon, fmtTime, fmtShort, clamp, dragHandler, contextMenu, promptDialog, toast } from './util.js';
-import { runtime } from './media.js';
+import { runtime, isDesktop } from './media.js';
 import { settings } from './settings.js';
 import { player, pause } from './player.js';
 import { handleDrop } from './actions.js';
 import { keyTimes } from './keyframes.js';
 import { removeSilencesDialog } from './silence.js';
 import { openCaptionsDialog } from './captions.js';
+import { openRecorder } from './recorder.js';
 import { labelMenu, speedDialog, gainDialog, copyAttributes, pasteAttributesDialog, hasAttributes } from './editTools.js';
 import { openMixer } from './audiomix.js';
 import { openSource } from './source.js';
@@ -44,6 +45,7 @@ export function initTimeline() {
     el('div', { class: 'tb-sep' }),
     btn('silence', 'Tirar silêncios automaticamente', () => removeSilencesDialog()),
     btn('captions', 'Legendas automáticas', () => openCaptionsDialog()),
+    ...(isDesktop ? [btn('record', 'Gravar tela e webcam', () => openRecorder())] : []),
     el('div', { class: 'grow' }),
     btn('mixer', 'Mixer de áudio (efeitos por trilha)', () => openMixer()),
     el('div', { class: 'tb-sep' }),

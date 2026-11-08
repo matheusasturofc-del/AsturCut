@@ -476,7 +476,7 @@ body.home-mode .tb-logo { visibility: hidden; }
 .ar { display: inline-block; border: 1.5px solid #fff; border-radius: 3px; flex: none; }
 .ar-16-9 { width: 20px; height: 12px; } .ar-9-16 { width: 11px; height: 18px; } .ar-1-1 { width: 15px; height: 15px; } .ar-4-5 { width: 13px; height: 16px; }
 
-.quick-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.quick-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .quick { display: flex; align-items: flex-start; gap: 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: 12px; padding: 14px; text-align: left; transition: border-color .15s, transform .15s; }
 .quick:hover { border-color: rgba(var(--accent-rgb), .7); transform: translateY(-2px); }
 .quick b { display: block; font-size: 13px; margin-bottom: 3px; }
@@ -711,3 +711,30 @@ body.picking #preview-canvas { outline: 2px dashed var(--accent); }
 .cap-style.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; color: var(--accent); }
 .cap-grid { display: flex; flex-direction: column; gap: 8px; }
 .cap-live { min-height: 36px; font-size: 12px; color: var(--text); opacity: .8; font-style: italic; }
+
+/* ---------- Gravar tela e webcam ---------- */
+.rec-dlg { display: grid; grid-template-columns: 1fr 260px; gap: 18px; }
+.rec-left { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rec-tabs { align-self: flex-start; }
+.rec-tabs button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; }
+.rec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; max-height: 360px; overflow: auto; align-content: start; min-height: 220px; }
+.rec-src { display: flex; flex-direction: column; gap: 6px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 6px; text-align: left; color: var(--text); }
+.rec-src img, .rec-noimg { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; border-radius: 6px; display: grid; place-items: center; color: var(--muted); }
+.rec-src span { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rec-src:hover { border-color: var(--muted); }
+.rec-src.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.rec-empty { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 200px; color: var(--muted); }
+.rec-right { display: flex; flex-direction: column; gap: 8px; }
+.rec-label { display: flex; align-items: center; gap: 6px; font-weight: 600; margin-top: 4px; }
+.rec-label span { color: var(--accent); display: inline-flex; }
+.rec-camwrap { aspect-ratio: 16 / 9; background: #000; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.rec-camwrap.off { display: none; }
+.rec-cam { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.rec-meter { height: 6px; border-radius: 4px; background: var(--panel3); overflow: hidden; }
+.rec-meter i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #22c55e, #eab308 70%, #ef4444); transition: width .06s; }
+.rec-opt { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; }
+.rec-count { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: rgba(0,0,0,.55); pointer-events: none; }
+.rec-count div { font-size: 160px; font-weight: 800; color: #fff; text-shadow: 0 10px 50px rgba(28,207,220,.6); animation: recpop 1s ease-out both; }
+@keyframes recpop { from { transform: scale(1.6); opacity: 0; } 30% { transform: scale(1); opacity: 1; } to { opacity: .85; } }
+.progress.indet .progress-fill { width: 35%; animation: indet 1.1s ease-in-out infinite; }
+@keyframes indet { from { margin-left: -35%; } to { margin-left: 100%; } }
