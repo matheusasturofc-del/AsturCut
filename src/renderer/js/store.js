@@ -50,8 +50,8 @@ class Store {
     this.selection = new Set();
     this.selectedTransition = null; // id do clipe que recebe a transição
     this.time = 0;
-    this.undoStack = [];
-    this.redoStack = [];
+    this.undoStack = []; this.undoLabels = [];
+    this.redoStack = []; this.redoLabels = [];
     this.clipboard = [];
   }
 
@@ -72,13 +72,22 @@ class Store {
     return JSON.stringify({ tracks, clips, settings: st, name, markers, range: range || null });
   }
   commit(label = '') {
+    if (this._batching) { this.dirty = true; return; } // dentro de batch(): um só passo no histórico
     this.undoStack.push(this._last ?? this.snapshot());
-    if (this.undoStack.length > 200) this.undoStack.shift();
-    this.redoStack = [];
+    this.undoLabels.push(label || 'edit');
+    if (this.undoStack.length > 200) { this.undoStack.shift(); this.undoLabels.shift(); }
+    this.redoStack = []; this.redoLabels = [];
     this._last = null;
     this.dirty = true;
     this.applyMagnet();
     bus.emit('change', label);
+  }
+  // várias operações como um único passo de desfazer
+  batch(label, fn) {
+    this.begin();
+    this._batching = true;
+    try { fn(); } finally { this._batching = false; }
+    this.commit(label);
   }
   // inicia uma edição contínua (arrastar slider): guarda estado antes
   begin() { if (this._last == null) this._last = this.snapshot(); }
@@ -94,12 +103,14 @@ class Store {
   undo() {
     if (!this.undoStack.length) return;
     this.redoStack.push(this.snapshot());
+    this.redoLabels.push(this.undoLabels.pop() || 'edit');
     this.restore(this.undoStack.pop());
     this.dirty = true;
   }
   redo() {
     if (!this.redoStack.length) return;
     this.undoStack.push(this.snapshot());
+    this.undoLabels.push(this.redoLabels.pop() || 'edit');
     this.restore(this.redoStack.pop());
     this.dirty = true;
   }
@@ -108,7 +119,7 @@ class Store {
   newProject(name) {
     this.project = newProject(name);
     this.filePath = null; this.dirty = false;
-    this.selection.clear(); this.undoStack = []; this.redoStack = []; this.time = 0;
+    this.selection.clear(); this.undoStack = []; this.redoStack = []; this.undoLabels = []; this.redoLabels = []; this.time = 0;
     bus.emit('project');
     bus.emit('change', 'new');
     bus.emit('selection');
@@ -118,7 +129,7 @@ class Store {
     this.project = Object.assign(base, data);
     this.project.clips.forEach((c) => normalizeClip(c));
     this.filePath = filePath; this.dirty = false;
-    this.selection.clear(); this.undoStack = []; this.redoStack = []; this.time = 0;
+    this.selection.clear(); this.undoStack = []; this.redoStack = []; this.undoLabels = []; this.redoLabels = []; this.time = 0;
     bus.emit('project');
     bus.emit('change', 'load');
     bus.emit('selection');

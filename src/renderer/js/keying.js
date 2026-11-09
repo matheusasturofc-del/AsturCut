@@ -1,16 +1,18 @@
 // Remover fundo: chroma key (tela verde/azul) e recorte de pessoa com IA (MediaPipe, roda no computador)
 // Processa o quadro do vídeo em WebGL e devolve um canvas com transparência para o compositor desenhar.
 import { player } from './player.js';
+import { lutData } from './color.js';
 
 export const keyBypass = new Set(); // clipes sem recorte temporariamente (conta-gotas)
 
 export const DEFAULT_CHROMA = { on: false, color: '#00ff00', similarity: 0.4, smoothness: 0.08, spill: 0.1 };
 export const DEFAULT_CUTOUT = { on: false, edge: 0.5, feather: 0.15 };
 
-export const needsKeying = (c) => !!((c.chroma && c.chroma.on) || (c.cutout && c.cutout.on)) && (c.type === 'video' || c.type === 'image');
+export const needsKeying = (c) => !!((c.chroma && c.chroma.on) || (c.cutout && c.cutout.on) || (c.grade && c.grade.lut)) && (c.type === 'video' || c.type === 'image');
 
 // ---------- WebGL ----------
 let gl = null, glCanvas = null, prog = null, texSrc = null, texMask = null, uni = {};
+const lutTex = new Map();
 const VS = `#version 300 es
 in vec2 p; out vec2 uv;
 void main() { uv = vec2((p.x + 1.0) * 0.5, 1.0 - (p.y + 1.0) * 0.5); gl_Position = vec4(p, 0.0, 1.0); }`;
@@ -21,6 +23,15 @@ uniform sampler2D src; uniform sampler2D mask;
 uniform int useChroma; uniform int useMask;
 uniform vec3 key; uniform float similarity; uniform float smoothness; uniform float spill;
 uniform float edge; uniform float feather;
+uniform sampler2D lut; uniform int useLut; uniform float lutSize; uniform float lutMix;
+vec3 lutLookup(vec3 c) {
+  float n = lutSize;
+  vec3 s = clamp(c, 0.0, 1.0) * (n - 1.0);
+  float b0 = floor(s.b), b1 = min(b0 + 1.0, n - 1.0), fb = s.b - b0;
+  vec2 uv0 = vec2((s.r + b0 * n + 0.5) / (n * n), (s.g + 0.5) / n);
+  vec2 uv1 = vec2((s.r + b1 * n + 0.5) / (n * n), (s.g + 0.5) / n);
+  return mix(texture(lut, uv0).rgb, texture(lut, uv1).rgb, fb);
+}
 vec2 cbcr(vec3 c) { return vec2(-0.1146 * c.r - 0.3854 * c.g + 0.5 * c.b, 0.5 * c.r - 0.4542 * c.g - 0.0458 * c.b); }
 void main() {
   vec4 c = texture(src, uv);
@@ -34,6 +45,7 @@ void main() {
     float lum = clamp(dot(rgb, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
     rgb = mix(vec3(lum), rgb, sp);
   }
+  if (useLut == 1) rgb = mix(rgb, lutLookup(rgb), lutMix);
   if (useMask == 1) {
     float m = texture(mask, uv).r;
     a *= smoothstep(edge - feather, edge + feather, m);
@@ -58,10 +70,10 @@ function initGL() {
   const loc = gl.getAttribLocation(prog, 'p');
   gl.enableVertexAttribArray(loc);
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-  for (const n of ['src', 'mask', 'useChroma', 'useMask', 'key', 'similarity', 'smoothness', 'spill', 'edge', 'feather']) uni[n] = gl.getUniformLocation(prog, n);
+  for (const n of ['src', 'mask', 'useChroma', 'useMask', 'key', 'similarity', 'smoothness', 'spill', 'edge', 'feather', 'lut', 'useLut', 'lutSize', 'lutMix']) uni[n] = gl.getUniformLocation(prog, n);
   const mk = (unit) => { const tx = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tx); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return tx; };
   texSrc = mk(0); texMask = mk(1);
-  gl.uniform1i(uni.src, 0); gl.uniform1i(uni.mask, 1);
+  gl.uniform1i(uni.src, 0); gl.uniform1i(uni.mask, 1); gl.uniform1i(uni.lut, 2);
   return true;
 }
 
@@ -150,6 +162,30 @@ export function keyFrame(clip, src, mw, mh) {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, mask.w, mask.h, 0, gl.RED, gl.UNSIGNED_BYTE, mask.data);
     gl.uniform1f(uni.edge, cu.edge);
     gl.uniform1f(uni.feather, Math.max(0.01, cu.feather));
+  }
+  const lid = clip.grade && clip.grade.lut;
+  const L = lid ? lutData(lid) : null;
+  gl.uniform1i(uni.useLut, L ? 1 : 0);
+  if (L) {
+    gl.activeTexture(gl.TEXTURE2);
+    let tx = lutTex.get(lid);
+    if (!tx) {
+      tx = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tx);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      // .cube: r varia mais rápido, depois g, depois b -> textura (N*N) x N com as fatias de b lado a lado
+      const n = L.size, out = new Uint8Array(n * n * n * 3);
+      for (let b = 0; b < n; b++) for (let g = 0; g < n; g++) for (let r = 0; r < n; r++) {
+        const si = ((b * n + g) * n + r) * 3, di = (g * n * n + b * n + r) * 3;
+        out[di] = L.data[si]; out[di + 1] = L.data[si + 1]; out[di + 2] = L.data[si + 2];
+      }
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, n * n, n, 0, gl.RGB, gl.UNSIGNED_BYTE, out);
+      lutTex.set(lid, tx);
+    } else gl.bindTexture(gl.TEXTURE_2D, tx);
+    gl.uniform1f(uni.lutSize, L.size);
+    gl.uniform1f(uni.lutMix, clip.grade.lutMix ?? 1);
   }
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT);

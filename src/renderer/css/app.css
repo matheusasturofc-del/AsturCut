@@ -240,7 +240,8 @@ body.dragging iframe { pointer-events: none; }
 .font-select { font-size: 13px; }
 
 /* ---------- Linha do tempo ---------- */
-.tl-toolbar { height: 40px; flex: none; display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--border); }
+.tl-toolbar { height: 40px; flex: none; display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.tl-toolbar > * { flex: none; }
 .tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 5px; }
 .tl-scroll { flex: 1; overflow: auto; position: relative; min-height: 0; }
 .tl-inner { position: relative; min-height: 100%; }
@@ -885,3 +886,29 @@ body.mobile .tpl-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
 .m-busy-box { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; font-weight: 600; max-width: 86vw; }
 .m-busy-box i { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--panel3); border-top-color: var(--accent); animation: mspin .8s linear infinite; flex: none; }
 @keyframes mspin { to { transform: rotate(360deg); } }
+
+/* ---------- Cor (Lumetri): rodas, curvas e scopes ---------- */
+.cw-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.cw { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cw-label { font-size: 11px; color: var(--muted); font-weight: 600; }
+.cw-wheel { width: 100%; max-width: 112px; aspect-ratio: 1; touch-action: none; cursor: crosshair; }
+.cw-lum { width: 100%; accent-color: var(--accent); }
+.cv-wrap { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.cv-tabs { align-self: flex-start; }
+.cv-curves { width: 100%; max-width: 260px; aspect-ratio: 1; border-radius: 6px; border: 1px solid var(--border); touch-action: none; cursor: crosshair; align-self: center; }
+.scopes { position: fixed; right: 24px; bottom: 24px; z-index: 900; width: 420px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,.5); overflow: hidden; }
+.sc-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); cursor: move; }
+.sc-head .segmented button { font-size: 11px; padding: 3px 8px; }
+.sc-canvas { display: block; width: 100%; aspect-ratio: 2; background: #0b0b0d; }
+body.mobile .scopes { left: 8px; right: 8px; width: auto; bottom: auto; top: 60px; }
+
+/* ---------- histórico e fila ---------- */
+.hist-list { display: flex; flex-direction: column; gap: 2px; max-height: 50vh; overflow: auto; }
+.hist-item { display: flex; gap: 10px; align-items: center; text-align: left; background: transparent; border: 0; padding: 7px 10px; border-radius: 6px; color: var(--text); }
+.hist-item:hover { background: var(--panel2); }
+.hist-item.now { color: var(--accent); }
+.q-list { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
+.q-item { display: flex; align-items: center; gap: 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.q-item.ok .q-st { color: #4ade80; } .q-item.err .q-st { color: #f87171; } .q-item.run .q-st { color: var(--accent); }
+.q-st { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+#panel-timeline.pro-tool .clip-handle { background: rgba(var(--accent-rgb), .35); }

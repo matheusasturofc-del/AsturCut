@@ -14,6 +14,7 @@ import { saveProject } from '../projects.js';
 import { openCaptionsDialog } from '../captions.js';
 import { removeSilencesDialog } from '../silence.js';
 import { setSpeed } from '../timeline.js';
+import { freezeFrame, detectScenes } from '../protools.js';
 import { initMobileTimeline, fitZoom } from './mtimeline.js';
 import { openSheet, closeSheet, sheetOpen, parkPanel } from './sheets.js';
 
@@ -155,6 +156,8 @@ function clipTools(c) {
   if (c.type !== 'audio' && c.type !== 'effect' && c.type !== 'filter') list.push(tool('anim', 'wand', 'Animações', () => openInspector('anim', t('Animações'))));
   if (visual) {
     list.push(tool('adjust', 'adjust', 'Ajustar', () => openInspector('adjust', t('Ajustar'))));
+    list.push(tool('color', 'palette', 'Cor', () => openInspector('color', t('Cor'))));
+    list.push(tool('mask', 'compare', 'Máscara', () => openInspector('basic', t('Máscara'))));
     list.push(tool('filters', 'filters', 'Filtros', () => openLibrary('filters', t('Filtros'))));
     list.push(tool('effects', 'effects', 'Efeitos', () => openLibrary('effects', t('Efeitos'))));
     list.push(tool('cutout', 'person', 'Remover fundo', () => openInspector('keying', t('Remover fundo'))));
@@ -165,6 +168,8 @@ function clipTools(c) {
     list.push(tool('flip', 'flip', 'Espelhar', () => store.updateClip(c.id, { transform: { flipH: !c.transform.flipH } })));
     list.push(tool('rotate', 'rotate', 'Girar', () => store.updateClip(c.id, { transform: { rotation: ((c.transform.rotation || 0) + 90) % 360 } })));
   }
+  if (c.type === 'video') list.push(tool('freeze', 'freeze', 'Congelar', () => freezeFrame()));
+  if (c.type === 'video') list.push(tool('scenes', 'split', 'Detectar cenas', () => detectScenes(c)));
   if (c.type === 'video' && !c.audioDetached) list.push(tool('detach', 'detach', 'Separar áudio', () => { store.detachAudio(c.id); toast(t('Áudio separado'), 'success'); }));
   if (c.type === 'audio' || c.type === 'video') list.push(tool('silence', 'silence', 'Tirar silêncios', () => removeSilencesDialog([c])));
   if (c.type === 'audio') list.push(tool('speed2x', 'forward', '2x', () => setSpeed(c, (c.speed || 1) === 2 ? 1 : 2)));

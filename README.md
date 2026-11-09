@@ -67,6 +67,14 @@ Em poucos minutos sai a **Release** `v1.3.0` com o instalador `.exe` (Windows) e
 
 ## Recursos
 
+**Novidades da 1.4 — ferramentas profissionais**
+- **Cor estilo Lumetri**: rodas de cor (sombras, meios-tons, realces), curvas RGB e por canal, **LUTs .cube** com intensidade, antes/depois e **scopes** (forma de onda, vetorscópio e histograma) — também funciona em camadas de ajuste (clipes de filtro)
+- **Máscaras** retangulares e elípticas em qualquer clipe: posição, tamanho, rotação, suavização, expansão, opacidade e inverter
+- **Ferramentas de edição do Premiere**: Ripple (B), Rolante (N), Alongar taxa (R), Slip (Y), Slide (U) e Lâmina (C)
+- **Detectar cenas**: corta o vídeo sozinho em cada troca de cena, no quadro exato
+- **Ducking automático** (abaixa a música quando há fala) e **crossfade de áudio** nas emendas
+- **Congelar quadro** (Shift+F), **Histórico de ações** (Ctrl+H) e **Fila de exportação** (várias versões em sequência)
+
 **Novidades da 1.3**
 - **Legendas automáticas**: o AsturCut ouve a fala e cria as legendas sozinho (Whisper rodando no seu PC, nada vai para a internet). Estilos Clássica, Destaque (karaokê), Pop, Com fundo, Neon e Simples. O modelo de IA é baixado só na primeira vez.
 - **Remover fundo**: recorte de pessoa com IA (sem tela verde) e chroma key para tela verde/azul, com conta-gotas, suavidade e remoção de reflexo

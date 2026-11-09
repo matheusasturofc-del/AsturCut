@@ -6,6 +6,7 @@ import { getPlayer, allPlayers, gcPlayers, audioCtx } from './media.js';
 import { settings } from './settings.js';
 import { valueAt, setValue, transformAt, localTime } from './keyframes.js';
 import { routePlayer } from './audiomix.js';
+import { toggleScopes } from './color.js';
 
 export const player = {
   playing: false,
@@ -26,6 +27,7 @@ export function initPlayer() {
   const head = el('div', { class: 'panel-head', dataset: { drag: 'player' } },
     el('span', { class: 'panel-title', html: icon('drag', 14) + ' Reprodutor' }),
     el('div', { class: 'grow' }),
+    el('button', { class: 'icon-btn', title: 'Scopes de cor (forma de onda, vetorscópio, histograma)', onclick: () => toggleScopes(), html: icon('scopes') }),
     el('button', { class: 'icon-btn', title: 'Grade de composição', id: 'btn-grid', onclick: () => { settings.set('showGrid', !settings.get('showGrid')); updateGridBtn(); renderOverlay(); }, html: icon('grid') }),
   );
   const stage = el('div', { class: 'player-stage', id: 'player-stage' });
@@ -188,7 +190,7 @@ export function syncMedia(t, playing) {
       if (Math.abs(el.playbackRate - rate) > 0.001) el.playbackRate = rate;
       el.preservesPitch = !c.changePitch;
       const inRange = lt >= 0 && lt < c.duration;
-      if (playing && inRange) {
+      if (playing && inRange && !c.freeze) {
         if (el.paused) { if (Math.abs(el.currentTime - target) > 0.05) el.currentTime = target; el.play().catch(() => {}); }
         else if (Math.abs(el.currentTime - target) > 0.3 * (player.rateMul || 1)) el.currentTime = target;
       } else {

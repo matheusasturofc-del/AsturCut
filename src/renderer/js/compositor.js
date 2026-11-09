@@ -9,6 +9,7 @@ import { clipAnimation } from './lib/animations.js';
 import { drawShape } from './lib/stickers.js';
 import { transformAt } from './keyframes.js';
 import { needsKeying, keyFrame } from './keying.js';
+import { gradeFilter } from './color.js';
 
 // clipes com "antes/depois" ativo (mostra sem correção de cor) — só em tempo de execução
 export const colorBypass = new Set();
@@ -67,6 +68,7 @@ export const hasMedia = (c) => c.type === 'video' || c.type === 'audio';
 
 // tempo da mídia de origem para um clipe
 export function sourceTime(clip, lt) {
+  if (clip.freeze) return clip.in || 0; // quadro congelado
   const m = store.media(clip.mediaId);
   const t = (clip.in || 0) + lt * (clip.speed || 1);
   return clamp(t, 0, Math.max(0, (m?.duration || 0) - 0.04));
@@ -262,6 +264,7 @@ function renderClip(idx, clip, t, W, H, S, hits) {
   const adj = bypass ? NEUTRAL_ADJ : clip.adjust;
   const flt = bypass ? null : clip.filter;
   const filters = [adjustCss(adj)];
+  if (!bypass && clip.grade) filters.push(gradeFilter(clip.grade));
   if (adj.blur) filters.push(`blur(${(adj.blur / 100 * 20 * S).toFixed(1)}px)`);
   if (flt && FILTER_MAP[flt.id]) filters.push(filterCss(FILTER_MAP[flt.id], flt.intensity ?? 1));
   filters.push(...st.filter);
@@ -323,8 +326,44 @@ function renderClip(idx, clip, t, W, H, S, hits) {
     if (f.overlay2) tint(ctx, W, H, f.overlay2[0], f.overlay2[1], f.overlay2[2] * k);
   }
 
+  if (clip.masks && clip.masks.length) applyMasks(lc, clip, cx, cy, rot, sc * anim.sx * (tr.flipH ? -1 : 1), sc * anim.sy * (tr.flipV ? -1 : 1), size, S, W, H);
+
   if (hits) hits.push({ id: clip.id, cx: W / 2 + tr.x * W, cy: H / 2 + tr.y * H, w: size.w * tr.scale, h: size.h * tr.scale, rot: tr.rotation, W, H });
   return { canvas: lc, alpha: tr.opacity * anim.alpha * st.alpha, blend: clip.blend || 'source-over' };
+}
+
+// máscaras (retângulo/elipse) com suavização, expansão, opacidade e inversão
+let maskCv = null;
+export const defaultMask = (shape = 'ellipse') => ({ id: Math.random().toString(36).slice(2, 8), shape, x: 0, y: 0, w: 0.6, h: 0.6, rot: 0, feather: 20, expand: 0, opacity: 1, invert: false });
+function applyMasks(lc, clip, cx, cy, rot, sx, sy, size, S, W, H) {
+  if (!maskCv) maskCv = document.createElement('canvas');
+  if (maskCv.width !== W || maskCv.height !== H) { maskCv.width = W; maskCv.height = H; }
+  const m = maskCv.getContext('2d');
+  m.setTransform(1, 0, 0, 1, 0, 0); m.globalCompositeOperation = 'source-over'; m.filter = 'none'; m.globalAlpha = 1;
+  m.clearRect(0, 0, W, H);
+  if (clip.masks.every((k) => k.invert)) { m.fillStyle = '#fff'; m.fillRect(0, 0, W, H); }
+  for (const k of clip.masks) {
+    m.save();
+    m.translate(cx, cy); m.rotate((rot * Math.PI) / 180); m.scale(sx, sy);
+    m.translate(k.x * size.w, k.y * size.h); m.rotate(((k.rot || 0) * Math.PI) / 180);
+    const ex = (k.expand || 0) * S * 2;
+    const w = Math.max(1, k.w * size.w + ex), h = Math.max(1, k.h * size.h + ex);
+    const scale = Math.max(0.01, Math.abs(sx));
+    m.filter = k.feather > 0 ? `blur(${(k.feather * S / scale).toFixed(1)}px)` : 'none';
+    m.globalAlpha = k.opacity ?? 1;
+    m.globalCompositeOperation = k.invert ? 'destination-out' : 'source-over';
+    m.fillStyle = '#fff';
+    m.beginPath();
+    if (k.shape === 'rect') m.rect(-w / 2, -h / 2, w, h); else m.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+    m.fill();
+    m.restore();
+  }
+  const c = lc.getContext('2d');
+  c.save();
+  c.setTransform(1, 0, 0, 1, 0, 0); c.filter = 'none'; c.globalAlpha = 1;
+  c.globalCompositeOperation = 'destination-in';
+  c.drawImage(maskCv, 0, 0);
+  c.restore();
 }
 
 // aplica um clipe de efeito/filtro sobre tudo que está abaixo
@@ -334,7 +373,7 @@ function applyGlobal(main, clip, t, W, H, S) {
   const ctx = lc.getContext('2d');
   const st = { filter: [], dx: 0, dy: 0, scale: 1, rot: 0, alpha: 1, S, prog: lt / Math.max(0.01, clip.duration) };
   for (const e of clip.effects) { const def = EFFECT_MAP[e.id]; if (def?.pre) def.pre(st, lt, e.intensity ?? 0.6); }
-  const filters = [adjustCss(clip.adjust), ...st.filter];
+  const filters = [adjustCss(clip.adjust), clip.grade ? gradeFilter(clip.grade) : '', ...st.filter];
   if (clip.adjust.blur) filters.push(`blur(${(clip.adjust.blur / 100 * 20 * S).toFixed(1)}px)`);
   if (clip.filter && FILTER_MAP[clip.filter.id]) filters.push(filterCss(FILTER_MAP[clip.filter.id], clip.filter.intensity ?? 1));
   ctx.fillStyle = store.p.settings.background || '#000';

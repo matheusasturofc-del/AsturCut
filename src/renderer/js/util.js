@@ -92,6 +92,7 @@ export function toast(msg, type = 'info', ms = 2600) {
 
 // ---------- Modal ----------
 export function modal({ title, body, actions = [], width = 520, onClose, className = '' }) {
+  actions = actions.filter(Boolean);
   const overlay = el('div', { class: 'modal-overlay' });
   const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true); onClose && onClose(); };
   const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
@@ -300,6 +301,13 @@ const P = {
   video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/>',
   dot: '<circle cx="12" cy="12" r="3" fill="currentColor"/>',
   check: '<path d="M5 12l5 5 9-10"/>',
+  rippleTool: '<path d="M4 4v16M8 12h12M16 8l4 4-4 4"/>',
+  rollTool: '<path d="M12 4v16M4 12h4M16 12h4M7 9l-3 3 3 3M17 9l3 3-3 3"/>',
+  rateTool: '<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/><circle cx="12" cy="12" r="2"/>',
+  slipTool: '<rect x="6" y="7" width="12" height="10" rx="1"/><path d="M2 12h3M19 12h3M9 10l-2 2 2 2M15 10l2 2-2 2"/>',
+  slideTool: '<rect x="8" y="7" width="8" height="10" rx="1"/><path d="M3 9v6M21 9v6M4 12h3M17 12h3"/>',
+  history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 3"/>',
+  scopes: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M6 16l3-5 3 3 3-6 3 4"/>',
   silence: '<path d="M3 12h2M7 8v8M10 10v4M14 12h2M18 12h3" /><path d="M13 6l-2 12" stroke-dasharray="2 2"/>',
   captions: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 10.5a2 2 0 1 0 0 3M17 10.5a2 2 0 1 0 0 3"/>',
   record: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/>',

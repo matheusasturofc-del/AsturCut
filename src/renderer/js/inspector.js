@@ -15,7 +15,8 @@ import { openTab } from './library.js';
 import { player, startPick } from './player.js';
 import { DEFAULT_CHROMA, DEFAULT_CUTOUT, cutoutState, ensureSegmenter, keyBypass } from './keying.js';
 import { hasKf, anyKf, valueAt, setValue, toggleAnim, toggleKey, keyAtCursor, jumpKey, localTime, EASINGS, setEaseAtCursor, easeAtCursor } from './keyframes.js';
-import { colorBypass } from './compositor.js';
+import { colorBypass, defaultMask } from './compositor.js';
+import { defaultGrade, colorWheel, curvesEditor, importLut, toggleScopes } from './color.js';
 import { whiteBalanceFrom, applyColorToMedia, copyAttributes, pasteAttributesDialog, hasAttributes, gainDialog, speedDialog, toDb } from './editTools.js';
 
 let panel, bodyEl;
@@ -203,13 +204,13 @@ function renderTransition(c) {
 
 function tabsFor(c) {
   switch (c.type) {
-    case 'video': return [['basic', 'Vídeo'], ['audio', 'Áudio'], ['speed', 'Velocidade'], ['anim', 'Animação'], ['adjust', 'Ajuste'], ['fx', 'Efeitos']];
-    case 'image': return [['basic', 'Imagem'], ['anim', 'Animação'], ['adjust', 'Ajuste'], ['fx', 'Efeitos']];
+    case 'video': return [['basic', 'Vídeo'], ['audio', 'Áudio'], ['speed', 'Velocidade'], ['anim', 'Animação'], ['adjust', 'Ajuste'], ['color', 'Cor'], ['fx', 'Efeitos']];
+    case 'image': return [['basic', 'Imagem'], ['anim', 'Animação'], ['adjust', 'Ajuste'], ['color', 'Cor'], ['fx', 'Efeitos']];
     case 'text': return [['text', 'Texto'], ['basic', 'Transformar'], ['anim', 'Animação'], ['fx', 'Efeitos']];
     case 'sticker': case 'shape': return [['basic', c.type === 'shape' ? 'Forma' : 'Sticker'], ['anim', 'Animação'], ['fx', 'Efeitos']];
     case 'audio': return [['audio', 'Áudio'], ['speed', 'Velocidade']];
     case 'effect': return [['fx', 'Efeito'], ['timing', 'Tempo']];
-    case 'filter': return [['filter', 'Filtro'], ['adjust', 'Ajuste'], ['timing', 'Tempo']];
+    case 'filter': return [['filter', 'Filtro'], ['adjust', 'Ajuste'], ['color', 'Cor'], ['timing', 'Tempo']];
   }
   return [['basic', 'Básico']];
 }
@@ -225,7 +226,7 @@ function renderClip(c) {
   else if (focusTab && tabs.some((x) => x[0] === focusTab)) active = focusTab;
   if (!tabs.some((t) => t[0] === active) && active !== 'keying') active = tabs[0][0];
   if (!focusTab) header('', tabs, active, (id) => { lastTab[c.type] = id; render(); });
-  const fn = { basic: basicTab, text: textTab, audio: audioTab, speed: speedTab, anim: animTab, adjust: adjustTab, fx: fxTab, filter: filterTab, timing: timingTab, keying: (x) => bodyEl.append(keyingSection(x)) }[active];
+  const fn = { basic: basicTab, text: textTab, audio: audioTab, speed: speedTab, anim: animTab, adjust: adjustTab, fx: fxTab, filter: filterTab, timing: timingTab, color: colorTab, keying: (x) => bodyEl.append(keyingSection(x)) }[active];
   fn(c);
   bodyEl.append(el('div', { class: 'insp-foot muted small' }, t('Início {a} · Duração {b}', { a: fmtShort(c.start), b: fmtShort(c.duration) })));
 }
@@ -273,6 +274,7 @@ function basicTab(c) {
       slider('Cortar base', Math.round(cr.b * 100), { min: 0, max: 90, unit: '%', def: 0, onInput: (v) => upd(c, { crop: { ...cr, ...(c.crop || {}), b: v / 100 } }) }),
     ));
   }
+  if (c.type !== 'audio') bodyEl.append(masksSection(c));
   if (media && focusTab !== 'basic') bodyEl.append(keyingSection(c));
   bodyEl.append(section('Mistura',
     select('Modo:', c.blend, [['source-over', 'Normal'], ['multiply', 'Multiplicar'], ['screen', 'Tela'], ['overlay', 'Sobrepor'], ['darken', 'Escurecer'], ['lighten', 'Clarear'], ['color-dodge', 'Subexposição de cor'], ['color-burn', 'Superexposição de cor'], ['hard-light', 'Luz forte'], ['soft-light', 'Luz suave'], ['difference', 'Diferença'], ['exclusion', 'Exclusão'], ['hue', 'Matiz'], ['saturation', 'Saturação'], ['color', 'Cor'], ['luminosity', 'Luminosidade']], (v) => updC(c, { blend: v })),
@@ -431,6 +433,53 @@ function adjustTab(c) {
       c.filter ? slider('Intensidade', Math.round((c.filter.intensity ?? 1) * 100), { min: 0, max: 100, unit: '%', def: 100, onInput: (v) => upd(c, { filter: { intensity: v / 100 } }) }) : null,
     ));
   }
+}
+
+// ---------- Cor (estilo Lumetri) ----------
+function colorTab(c) {
+  if (!c.grade) c.grade = defaultGrade();
+  const g = c.grade;
+  const ch = (final) => { if (final) store.commit('color'); else store.touch(); };
+  const bypass = colorBypass.has(c.id);
+  bodyEl.append(el('div', { class: 'color-tools' },
+    el('button', { class: 'btn sm', onclick: () => toggleScopes(), html: icon('mixer', 13) + `<span>${t('Scopes')}</span>` }),
+    el('button', { class: 'btn sm' + (bypass ? ' on' : ''), onclick: () => { bypass ? colorBypass.delete(c.id) : colorBypass.add(c.id); bus.emit('frame-ready'); render(); }, html: icon('compare', 13) + `<span>${bypass ? t('Mostrando: antes') : t('Antes/depois')}</span>` }),
+    el('button', { class: 'btn sm', onclick: () => { store.begin(); const lut = g.lut, mix = g.lutMix; c.grade = { ...defaultGrade(), lut, lutMix: mix }; store.commit('color-reset'); } }, t('Zerar cor'))));
+  bodyEl.append(section(t('Rodas de cor'),
+    el('div', { class: 'cw-row' }, colorWheel('Sombras', g.lift, ch), colorWheel('Meios-tons', g.gamma, ch), colorWheel('Realces', g.gain, ch)),
+    el('div', { class: 'muted small' }, t('Arraste o ponto para tingir; a barra embaixo clareia ou escurece. Toque duplo zera a roda.'))));
+  bodyEl.append(section(t('Curvas'), curvesEditor(g.curves, ch)));
+  const luts = Object.entries(store.p.luts || {});
+  bodyEl.append(section('LUT',
+    select('LUT:', g.lut || '', [['', t('Nenhuma')], ...luts.map(([id, l]) => [id, l.name])], (v) => updC(c, { grade: { lut: v || null } })),
+    g.lut ? slider('Intensidade', Math.round((g.lutMix ?? 1) * 100), { min: 0, max: 100, unit: '%', def: 100, onInput: (v) => upd(c, { grade: { lutMix: v / 100 } }) }) : null,
+    el('div', { class: 'btn-row' }, el('button', { class: 'btn sm', onclick: () => importLut((id) => updC(c, { grade: { lut: id } })) }, t('Importar LUT (.cube)...')))));
+}
+
+// ---------- Máscaras ----------
+function masksSection(c) {
+  const list = c.masks || [];
+  const add = (shape) => { store.begin(); c.masks = [...(c.masks || []), defaultMask(shape)]; store.commit('mask'); };
+  const box = section(t('Máscaras'),
+    el('div', { class: 'btn-row' },
+      el('button', { class: 'btn sm', onclick: () => add('ellipse') }, '+ ' + t('Elipse')),
+      el('button', { class: 'btn sm', onclick: () => add('rect') }, '+ ' + t('Retângulo'))));
+  list.forEach((m, i) => {
+    const set = (patch) => { Object.assign(m, patch); store.touch(); };
+    box.append(el('div', { class: 'fx-item' },
+      el('div', { class: 'fx-head' }, el('b', {}, `${t('Máscara')} ${i + 1} · ${m.shape === 'rect' ? t('Retângulo') : t('Elipse')}`), el('div', { class: 'grow' }),
+        el('button', { class: 'btn sm' + (m.invert ? ' on' : ''), onclick: () => { store.begin(); m.invert = !m.invert; store.commit('mask'); } }, t('Inverter')),
+        el('button', { class: 'icon-btn xs', title: t('Excluir'), onclick: () => { store.begin(); c.masks.splice(i, 1); store.commit('mask'); }, html: icon('trash', 13) })),
+      slider('Posição X', Math.round(m.x * 100), { min: -100, max: 100, def: 0, onInput: (v) => set({ x: v / 100 }) }),
+      slider('Posição Y', Math.round(m.y * 100), { min: -100, max: 100, def: 0, onInput: (v) => set({ y: v / 100 }) }),
+      slider('Largura', Math.round(m.w * 100), { min: 2, max: 200, unit: '%', def: 60, onInput: (v) => set({ w: v / 100 }) }),
+      slider('Altura', Math.round(m.h * 100), { min: 2, max: 200, unit: '%', def: 60, onInput: (v) => set({ h: v / 100 }) }),
+      slider('Rotação', m.rot || 0, { min: -180, max: 180, unit: '°', def: 0, onInput: (v) => set({ rot: v }) }),
+      slider('Suavizar borda', m.feather, { min: 0, max: 200, def: 20, onInput: (v) => set({ feather: v }) }),
+      slider('Expansão', m.expand || 0, { min: -200, max: 200, def: 0, onInput: (v) => set({ expand: v }) }),
+      slider('Opacidade', Math.round((m.opacity ?? 1) * 100), { min: 0, max: 100, unit: '%', def: 100, onInput: (v) => set({ opacity: v / 100 }) })));
+  });
+  return box;
 }
 
 function fxTab(c) {

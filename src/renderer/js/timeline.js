@@ -10,6 +10,7 @@ import { keyTimes } from './keyframes.js';
 import { removeSilencesDialog } from './silence.js';
 import { openCaptionsDialog } from './captions.js';
 import { openRecorder } from './recorder.js';
+import { freezeFrame, detectScenes, audioCrossfades, openHistory } from './protools.js';
 import { labelMenu, speedDialog, gainDialog, copyAttributes, pasteAttributesDialog, hasAttributes } from './editTools.js';
 import { openMixer } from './audiomix.js';
 import { openSource } from './source.js';
@@ -29,7 +30,12 @@ export function initTimeline() {
   const btn = (ic, title, fn, id) => el('button', { class: 'icon-btn', title, id, onclick: fn, html: icon(ic) });
   tb.append(
     btn('cursor', 'Selecionar (V)', () => setMode('select'), 'tl-mode-select'),
-    btn('blade', 'Lâmina — clique para cortar (B)', () => setMode('blade'), 'tl-mode-blade'),
+    btn('blade', 'Lâmina — clique para cortar (C)', () => setMode('blade'), 'tl-mode-blade'),
+    btn('rippleTool', 'Edição ripple — aparar empurra os clipes seguintes (B)', () => setMode('ripple'), 'tl-mode-ripple'),
+    btn('rollTool', 'Edição rolante — move o ponto de corte entre dois clipes (N)', () => setMode('rolling'), 'tl-mode-rolling'),
+    btn('rateTool', 'Alongar taxa — aparar muda a velocidade (R)', () => setMode('rate'), 'tl-mode-rate'),
+    btn('slipTool', 'Deslizar conteúdo (slip) — muda o trecho mostrado sem mover o clipe (Y)', () => setMode('slip'), 'tl-mode-slip'),
+    btn('slideTool', 'Deslizar clipe (slide) — move o clipe ajustando os vizinhos (U)', () => setMode('slide'), 'tl-mode-slide'),
     btn('forward', 'Selecionar à frente — seleciona tudo à direita do clique (A)', () => setMode('forward'), 'tl-mode-forward'),
     el('div', { class: 'tb-sep' }),
     btn('undo', 'Desfazer (Ctrl+Z)', () => store.undo()),
@@ -43,6 +49,7 @@ export function initTimeline() {
     btn('duplicate', 'Duplicar (Ctrl+D)', () => store.duplicate()),
     btn('detach', 'Separar áudio', () => { const c = store.primarySelected(); if (c?.type === 'video') { store.detachAudio(c.id); toast('Áudio separado', 'success'); } else toast('Selecione um vídeo', 'error'); }),
     btn('marker', 'Adicionar marcador (M)', () => store.addMarker()),
+    btn('history', 'Histórico de ações (Ctrl+H)', () => openHistory()),
     el('div', { class: 'tb-sep' }),
     btn('silence', 'Tirar silêncios automaticamente', () => removeSilencesDialog()),
     btn('captions', 'Legendas automáticas', () => openCaptionsDialog()),
@@ -99,6 +106,8 @@ export function setMode(m) {
   $('#tl-mode-select')?.classList.toggle('on', m === 'select');
   $('#tl-mode-blade')?.classList.toggle('on', m === 'blade');
   $('#tl-mode-forward')?.classList.toggle('on', m === 'forward');
+  for (const k of ['ripple', 'rolling', 'rate', 'slip', 'slide']) $('#tl-mode-' + k)?.classList.toggle('on', m === k);
+  root?.classList.toggle('pro-tool', ['ripple', 'rolling', 'rate', 'slip', 'slide'].includes(m));
   root?.classList.toggle('blade-mode', m === 'blade');
   root?.classList.toggle('forward-mode', m === 'forward');
 }
@@ -349,6 +358,8 @@ function renderClip(c, tr, h) {
     }
     if (e.shiftKey || e.ctrlKey || e.metaKey) { store.select(c.id, true); return; }
     if (!store.selection.has(c.id)) store.select(c.id);
+    if (mode === 'slip') { startSlip(e, c); return; }
+    if (mode === 'slide') { startSlide(e, c); return; }
     startMove(e, c);
   });
   node.addEventListener('dblclick', () => { if (c.type === 'text') bus.emit('edit-text', c.id); });
@@ -406,6 +417,9 @@ export function clipMenu(x, y, c) {
     { label: 'Velocidade e duração...', shortcut: 'Ctrl+R', onClick: () => speedDialog() },
     hasAudio(c) ? { label: 'Ganho de áudio...', shortcut: 'G', onClick: () => gainDialog() } : null,
     hasAudio(c) ? { label: 'Tirar silêncios...', onClick: () => removeSilencesDialog() } : null,
+    c.type === 'video' ? { label: 'Congelar quadro', shortcut: 'Shift+F', onClick: () => freezeFrame() } : null,
+    c.type === 'video' ? { label: 'Detectar cenas e cortar...', onClick: () => detectScenes(c) } : null,
+    hasAudio(c) ? { label: 'Crossfade de áudio nas emendas', onClick: () => audioCrossfades() } : null,
     { label: 'Rótulo', submenu: labelMenu() },
     linked ? { label: 'Desvincular áudio e vídeo', onClick: () => store.unlink() } : multi ? { label: 'Vincular clipes', onClick: () => store.link() } : null,
     c.mediaId && store.media(c.mediaId) && store.media(c.mediaId).type !== 'image' ? { label: 'Abrir no visualizador de origem', onClick: () => openSource(store.media(c.mediaId)) } : null,
@@ -534,7 +548,109 @@ function compatible(c, tr) {
   return c.type === 'audio' ? tr.type === 'audio' : tr.type === 'video';
 }
 
-function startTrim(e, c, side) {
+// vizinhos encostados na mesma trilha
+function touching(c) {
+  const list = store.clipsOn(c.trackId);
+  const i = list.indexOf(c);
+  const prev = list[i - 1], next = list[i + 1];
+  return {
+    prev: prev && Math.abs(prev.start + prev.duration - c.start) < 0.02 ? prev : null,
+    next: next && Math.abs(c.start + c.duration - next.start) < 0.02 ? next : null,
+  };
+}
+const mediaLen = (c) => { const m = c.mediaId && store.media(c.mediaId); return m && (m.type === 'video' || m.type === 'audio') && m.duration ? m.duration : Infinity; };
+
+// edição ripple: aparar empurra/puxa os clipes seguintes da trilha
+function startRippleTrim(e, c, side) {
+  const spd = c.speed || 1, o = { start: c.start, duration: c.duration, in: c.in || 0 };
+  const after = store.clipsOn(c.trackId).filter((x) => x !== c && x.start >= o.start + o.duration - 1e-3).map((x) => ({ x, s: x.start }));
+  const maxLen = mediaLen(c);
+  store.begin();
+  dragHandler(e, (ev, dx) => {
+    let dt = dx / pps;
+    if (side === 'r') {
+      const nd = clamp(o.duration + dt, 0.1, (maxLen - o.in) / spd);
+      dt = nd - o.duration; c.duration = nd;
+    } else {
+      dt = clamp(dt, -o.in / spd, o.duration - 0.1);
+      c.in = o.in + dt * spd; c.duration = o.duration - dt; dt = -dt;
+    }
+    for (const a of after) a.x.start = Math.max(0, a.s + dt);
+    store.touch();
+  }, () => store.commit('ripple-trim'), 'ew-resize');
+}
+
+// edição rolante: move o ponto de corte entre dois clipes encostados
+function startRollTrim(e, c, side) {
+  const nb = touching(c);
+  const a = side === 'r' ? c : nb.prev, b = side === 'r' ? nb.next : c;
+  if (!a || !b) return startTrim(e, c, side, true);
+  const oa = { duration: a.duration, in: a.in || 0 }, ob = { start: b.start, duration: b.duration, in: b.in || 0 };
+  const sa = a.speed || 1, sb = b.speed || 1;
+  store.begin();
+  dragHandler(e, (ev, dx) => {
+    let dt = dx / pps;
+    dt = Math.min(dt, (mediaLen(a) - oa.in) / sa - oa.duration, ob.duration - 0.1);
+    dt = Math.max(dt, -oa.duration + 0.1, -ob.in / sb);
+    a.duration = oa.duration + dt;
+    b.start = ob.start + dt; b.duration = ob.duration - dt; b.in = ob.in + dt * sb;
+    store.setTime(b.start);
+    store.touch();
+  }, () => store.commit('roll-trim'), 'col-resize');
+}
+
+// alongar taxa: aparar muda a velocidade (o conteúdo inteiro cabe no novo tamanho)
+function startRateTrim(e, c, side) {
+  const o = { start: c.start, duration: c.duration, speed: c.speed || 1 };
+  const src = o.duration * o.speed;
+  store.begin();
+  dragHandler(e, (ev, dx) => {
+    const dt = dx / pps;
+    let nd = side === 'r' ? o.duration + dt : o.duration - dt;
+    nd = clamp(nd, src / 16, src / 0.1);
+    c.speed = +(src / nd).toFixed(4);
+    c.duration = nd;
+    if (side === 'l') c.start = Math.max(0, o.start + o.duration - nd);
+    store.touch();
+  }, () => store.commit('rate-stretch'), 'ew-resize');
+}
+
+// slip: muda o trecho da mídia mostrado, sem mover o clipe
+function startSlip(e, c) {
+  if (!(c.type === 'video' || c.type === 'audio')) return startMove(e, c);
+  const spd = c.speed || 1, i0 = c.in || 0, maxIn = Math.max(0, mediaLen(c) - c.duration * spd);
+  store.begin();
+  dragHandler(e, (ev, dx) => {
+    c.in = clamp(i0 - (dx / pps) * spd, 0, maxIn);
+    store.setTime(c.start);
+    store.touch();
+  }, () => store.commit('slip'), 'ew-resize');
+}
+
+// slide: move o clipe entre os vizinhos, encurtando um e alongando o outro
+function startSlide(e, c) {
+  const nb = touching(c);
+  if (!nb.prev && !nb.next) return startMove(e, c);
+  const o = { start: c.start };
+  const p = nb.prev ? { d: nb.prev.duration, in: nb.prev.in || 0, sp: nb.prev.speed || 1 } : null;
+  const n = nb.next ? { s: nb.next.start, d: nb.next.duration, in: nb.next.in || 0, sp: nb.next.speed || 1 } : null;
+  store.begin();
+  dragHandler(e, (ev, dx) => {
+    let dt = dx / pps;
+    if (p) dt = clamp(dt, -p.d + 0.1, (mediaLen(nb.prev) - p.in) / p.sp - p.d);
+    if (n) dt = clamp(dt, -n.in / n.sp, n.d - 0.1);
+    dt = Math.max(dt, -o.start);
+    c.start = o.start + dt;
+    if (p) nb.prev.duration = p.d + dt;
+    if (n) { nb.next.start = n.s + dt; nb.next.duration = n.d - dt; nb.next.in = n.in + dt * n.sp; }
+    store.touch();
+  }, () => store.commit('slide'), 'ew-resize');
+}
+
+function startTrim(e, c, side, plain = false) {
+  if (!plain && mode === 'ripple') return startRippleTrim(e, c, side);
+  if (!plain && mode === 'rolling') return startRollTrim(e, c, side);
+  if (!plain && mode === 'rate') return startRateTrim(e, c, side);
   const o = { start: c.start, duration: c.duration, in: c.in || 0 };
   const m = c.mediaId ? store.media(c.mediaId) : null;
   const spd = c.speed || 1;

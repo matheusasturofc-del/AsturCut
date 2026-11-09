@@ -24,6 +24,9 @@ import { openMixer } from './audiomix.js';
 import { openRecorder } from './recorder.js';
 import { openCaptionsDialog } from './captions.js';
 import { removeSilencesDialog } from './silence.js';
+import { freezeFrame, openHistory, detectScenes, autoDuckDialog, audioCrossfades } from './protools.js';
+import { toggleScopes } from './color.js';
+import { openExportQueue } from './exporter.js';
 
 // ---------- Barra de título ----------
 function buildTitlebar() {
@@ -81,6 +84,18 @@ function mainMenu(anchor) {
     canRecordScreen ? { label: t('Gravar tela e webcam...'), onClick: () => openRecorder() } : null,
     { label: t('Legendas automáticas...'), onClick: () => openCaptionsDialog() },
     { label: t('Tirar silêncios...'), onClick: () => removeSilencesDialog() },
+    { label: t('Ferramentas profissionais'), submenu: [
+      { label: t('Histórico de ações...'), shortcut: 'Ctrl+H', onClick: () => openHistory() },
+      { label: t('Scopes de cor (Lumetri)'), onClick: () => toggleScopes() },
+      '-',
+      { label: t('Congelar quadro'), shortcut: 'Shift+F', onClick: () => freezeFrame() },
+      { label: t('Detectar cenas e cortar...'), onClick: () => detectScenes() },
+      '-',
+      { label: t('Ducking automático (abaixar música na fala)...'), onClick: () => autoDuckDialog() },
+      { label: t('Crossfade de áudio nas emendas'), onClick: () => audioCrossfades() },
+      '-',
+      isDesktop && !isMobile ? { label: t('Fila de exportação...'), onClick: () => openExportQueue() } : null,
+    ].filter(Boolean) },
     { label: t('Maximizar painel sob o mouse'), shortcut: '`', onClick: () => toggleMaximize() },
     '-',
     { label: t('Personalizar...'), shortcut: 'Ctrl+,', onClick: () => openCustomize('theme') },
@@ -155,6 +170,13 @@ const ACTION_FN = {
   rippleDelete: () => (store.selectedGap ? store.deleteGap() : store.rippleDelete()),
   toolSelect: () => setMode('select'),
   toolBlade: () => setMode('blade'),
+  toolRipple: () => setMode('ripple'),
+  toolRolling: () => setMode('rolling'),
+  toolRate: () => setMode('rate'),
+  toolSlip: () => setMode('slip'),
+  toolSlide: () => setMode('slide'),
+  freeze: () => freezeFrame(),
+  history: () => openHistory(),
   toolForward: () => setMode('forward'),
   markIn: () => store.setRange('in'),
   markOut: () => store.setRange('out'),

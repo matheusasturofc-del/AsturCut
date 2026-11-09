@@ -134,6 +134,13 @@ export function openExportDialog() {
     title: 'Exportar', width: 760, body,
     actions: [
       { label: 'Cancelar' },
+      isDesktop && !isMobile ? { label: 'Adicionar à fila', onClick: async () => {
+        const { W, H } = sizeFor();
+        const outPath = await api.exportChoose({ name: opts.name, format: opts.format });
+        if (!outPath) return false;
+        queue.push({ ...opts, W, H, start: opts.range === 'io' ? rIn : 0, duration: expDur(), outPath, project: store.p.name, status: 'wait' });
+        toast(t('Adicionado à fila de exportação ({n})', { n: queue.length }), 'success');
+      } } : null,
       { label: 'Exportar', primary: true, onClick: () => { const { W, H } = sizeFor(); startExport({ ...opts, W, H, start: opts.range === 'io' ? rIn : 0, duration: expDur() }); } },
     ],
   });
@@ -145,8 +152,8 @@ function bitrate(W, H, q) {
 }
 
 async function startExport(o) {
-  let outPath = null;
-  if (isDesktop) {
+  let outPath = o.outPath || null;
+  if (isDesktop && !outPath) {
     outPath = await api.exportChoose({ name: o.name, format: o.format });
     if (!outPath) return;
   }
@@ -185,6 +192,7 @@ async function startExport(o) {
       off(); off = null;
       m.close();
       if (!result) { toast('Exportação cancelada', 'info'); return; }
+      if (o.quiet) return result;
       done(result, (performance.now() - t0) / 1000);
       return;
     } catch (e) {
@@ -273,6 +281,7 @@ async function startExport(o) {
       const result = await api.exportEnd({ outPath, format: o.format, quality: o.quality, fps: o.fps, duration: o.duration });
       off();
       m.close();
+      if (o.quiet) return result;
       done(result);
     } else {
       const blob = new Blob(chunks, { type: 'video/webm' });
@@ -304,4 +313,39 @@ function done(path, secs) {
     ].filter(Boolean),
   });
   void settings;
+}
+
+// ---------- fila de exportação (várias versões de uma vez, como um "Media Encoder") ----------
+const queue = [];
+let running = false;
+export function openExportQueue() {
+  const list = el('div', { class: 'q-list' });
+  const STATUS = { wait: 'Na fila', run: 'Exportando...', ok: 'Pronto', err: 'Erro' };
+  const paint = () => {
+    list.innerHTML = '';
+    if (!queue.length) list.append(el('div', { class: 'muted small' }, t('A fila está vazia. No diálogo de exportar, use "Adicionar à fila".')));
+    queue.forEach((j, i) => list.append(el('div', { class: 'q-item ' + j.status },
+      el('div', { class: 'grow' }, el('b', { class: 'no-tr' }, j.outPath.split(/[\\/]/).pop()), el('div', { class: 'muted small' }, `${j.W}×${j.H} · ${j.fps} fps · ${j.format.toUpperCase()}`)),
+      el('span', { class: 'q-st' }, t(STATUS[j.status])),
+      j.status !== 'run' ? el('button', { class: 'icon-btn xs', title: t('Remover'), onclick: () => { queue.splice(i, 1); paint(); }, html: icon('close', 12) }) : null)));
+  };
+  paint();
+  const m = modal({ title: t('Fila de exportação'), width: 520, body: list, actions: [
+    { label: t('Limpar prontos'), onClick: () => { for (let i = queue.length - 1; i >= 0; i--) if (queue[i].status === 'ok') queue.splice(i, 1); paint(); return false; } },
+    { label: t('Fechar') },
+    { label: t('Iniciar fila'), primary: true, onClick: () => { runQueue(); } },
+  ] });
+  void m;
+}
+async function runQueue() {
+  if (running) return;
+  running = true;
+  let ok = 0;
+  for (const j of queue) {
+    if (j.status !== 'wait') continue;
+    j.status = 'run';
+    try { const r = await startExport({ ...j, quiet: true }); j.status = r ? 'ok' : 'err'; if (r) ok++; } catch { j.status = 'err'; }
+  }
+  running = false;
+  toast(t('Fila concluída: {n} arquivo(s) exportado(s)', { n: ok }), 'success', 4000);
 }
