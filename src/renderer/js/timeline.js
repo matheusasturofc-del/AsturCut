@@ -1,7 +1,8 @@
 // Linha do tempo: trilhas, clipes, arrastar/aparar/dividir, régua, zoom e soltar da biblioteca
 import { store, bus } from './store.js';
 import { $, el, icon, fmtTime, fmtShort, clamp, dragHandler, contextMenu, promptDialog, toast } from './util.js';
-import { runtime, isDesktop } from './media.js';
+import { runtime, canRecordScreen } from './media.js';
+import { mobileUI } from './mobile/detect.js';
 import { settings } from './settings.js';
 import { player, pause } from './player.js';
 import { handleDrop } from './actions.js';
@@ -13,7 +14,7 @@ import { labelMenu, speedDialog, gainDialog, copyAttributes, pasteAttributesDial
 import { openMixer } from './audiomix.js';
 import { openSource } from './source.js';
 
-const HEAD_W = 112;
+const HEAD_W = mobileUI ? 72 : 112;
 const RULER_H = 28;
 let pps = 60; // pixels por segundo
 let mode = 'select';
@@ -45,7 +46,7 @@ export function initTimeline() {
     el('div', { class: 'tb-sep' }),
     btn('silence', 'Tirar silêncios automaticamente', () => removeSilencesDialog()),
     btn('captions', 'Legendas automáticas', () => openCaptionsDialog()),
-    ...(isDesktop ? [btn('record', 'Gravar tela e webcam', () => openRecorder())] : []),
+    ...(canRecordScreen ? [btn('record', 'Gravar tela e webcam', () => openRecorder())] : []),
     el('div', { class: 'grow' }),
     btn('mixer', 'Mixer de áudio (efeitos por trilha)', () => openMixer()),
     el('div', { class: 'tb-sep' }),

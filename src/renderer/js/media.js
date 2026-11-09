@@ -6,6 +6,8 @@ import { renderSfx, audioDef } from './lib/sfx.js';
 
 export const api = window.astur || null;
 export const isDesktop = !!(api && api.isDesktop);
+export const isMobile = !!(api && api.isMobile); // app Android
+export const canRecordScreen = isDesktop && !isMobile;
 
 const VIDEO_EXT = ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'ogv'];
 const AUDIO_EXT = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'];

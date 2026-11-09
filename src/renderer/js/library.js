@@ -221,7 +221,7 @@ function renderMedia() {
       { label: 'Adicionar no cursor', onClick: () => addMedia(m, { t: store.time, trackId: null, newzone: 'top' }) },
       m.type !== 'image' ? { label: 'Abrir no visualizador de origem', onClick: () => openSource(m) } : null,
       { label: 'Mover para pasta', submenu: [{ label: t('Mídia') + ' (raiz)', onClick: () => { delete m.binId; store.dirty = true; renderContent(); } }, ...store.p.bins.map((b) => ({ label: b.name, checked: m.binId === b.id, onClick: () => { m.binId = b.id; store.dirty = true; renderContent(); } })), '-', { label: t('Nova pasta...'), onClick: () => newBin(m) }] },
-      isDesktop && m.path ? { label: 'Mostrar na pasta', onClick: () => api.showItem(m.path) } : null,
+      isDesktop && !api.isMobile && m.path ? { label: 'Mostrar na pasta', onClick: () => api.showItem(m.path) } : null,
       '-',
       { label: t('Informações: {info}', { info: `${m.width ? m.width + '×' + m.height + ' · ' : ''}${fmtBytes(m.size)}` }), disabled: true },
       { label: 'Remover do projeto', onClick: () => { store.begin(); store.p.clips = store.p.clips.filter((c) => c.mediaId !== m.id); store.p.media = store.p.media.filter((x) => x !== m); store.commit('rmmedia'); bus.emit('media'); } },

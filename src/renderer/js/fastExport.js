@@ -13,7 +13,7 @@ const SR = 48000;
 const decoded = new Map(); // mediaId -> AudioBuffer | null
 
 export function fastSupported() {
-  return typeof VideoEncoder !== 'undefined' && !!(api && api.fxBegin);
+  return typeof VideoEncoder !== 'undefined' && !!(api && (api.fxBegin || api.isMobile));
 }
 
 // libera a memória dos áudios decodificados
@@ -147,13 +147,100 @@ function videoClock(t) {
 // o vídeo tem clipes de vídeo dentro do intervalo?
 const hasVideoIn = (start, dur) => store.p.clips.some((c) => c.type === 'video' && c.start < start + dur && c.start + c.duration > start && !store.track(c.trackId)?.hidden);
 
-/**
- * Exporta rápido. ui: { setP(p, text), cancelled(), preview(canvas) }
- * Retorna o caminho do arquivo final (desktop).
- */
-export async function fastExport(o, outPath, ui, tr) {
+// codifica o vídeo do intervalo; sink: { format: 'annexb' | 'avc', output(chunk, meta) }
+export async function encodeVideo(o, ui, tr, sink) {
   const start = o.start || 0, dur = o.duration, fps = o.fps;
   const N = Math.max(1, Math.round(dur * fps));
+  const canvas = document.createElement('canvas');
+  canvas.width = o.W; canvas.height = o.H;
+  const ctx = canvas.getContext('2d', { alpha: false });
+  // perfis H.264 do melhor para o mais compatível (celulares às vezes só aceitam Main/Baseline)
+  const codecs = [avcCodec(o.W, o.H), 'avc1.4D4033', 'avc1.4D402A', 'avc1.42E033', 'avc1.42E01F'];
+  let config = null;
+  for (const codec of codecs) {
+    const c = { codec, width: o.W, height: o.H, bitrate: o.bitrate, framerate: fps, avc: { format: sink.format }, latencyMode: 'quality' };
+    for (const hw of ['prefer-hardware', 'no-preference']) {
+      const sup = await VideoEncoder.isConfigSupported({ ...c, hardwareAcceleration: hw }).catch(() => ({ supported: false }));
+      if (sup.supported) { config = { ...c, hardwareAcceleration: hw }; break; }
+    }
+    if (config) break;
+  }
+  if (!config) throw new Error('H.264 não suportado neste aparelho');
+  let encErr = null;
+  const enc = new VideoEncoder({ output: (chunk, meta) => sink.output(chunk, meta), error: (e) => { encErr = e; } });
+  enc.configure(config);
+  const gop = fps * 2;
+  let encoded = 0;
+  const encodeUpTo = async (idx) => {
+    while (encoded <= idx && encoded < N) {
+      const frame = new VideoFrame(canvas, { timestamp: Math.round(encoded * 1e6 / fps), duration: Math.round(1e6 / fps) });
+      enc.encode(frame, { keyFrame: encoded % gop === 0 });
+      frame.close();
+      encoded++;
+      if (enc.encodeQueueSize > 6) await new Promise((r) => setTimeout(r, 1));
+    }
+  };
+  const prevGain = masterGain().gain.value;
+  masterGain().gain.value = 0; // o áudio já foi mixado offline
+  player.exporting = true;
+  try {
+    if (!hasVideoIn(start, dur)) {
+      // sem vídeo: o mais rápido possível
+      for (let f = 0; f < N; f++) {
+        if (ui.cancelled() || encErr) break;
+        renderFrame(ctx, start + f / fps);
+        await encodeUpTo(f);
+        if (f % 10 === 0) { ui.preview(canvas); ui.setP(0.12 + (f / N) * 0.8, tr('Renderizando {a} / {b}', { a: f, b: N })); await new Promise((r) => setTimeout(r, 0)); }
+      }
+    } else {
+      // com vídeo: reprodução acelerada
+      const RATE = o.rate || 2;
+      player.rateMul = RATE;
+      syncMedia(start, false);
+      await new Promise((r) => setTimeout(r, 800));
+      let tt = 0, last = performance.now();
+      await new Promise((resolve) => {
+        const tick = async () => {
+          if (ui.cancelled() || encErr) return resolve();
+          const now = performance.now();
+          tt += Math.min(0.1, (now - last) / 1000) * RATE;
+          last = now;
+          // usa o próprio vídeo como relógio (evita dessincronizar do áudio mixado)
+          const vt = videoClock(start + tt);
+          if (vt != null && Math.abs(vt - (start + tt)) < 0.5) tt = Math.max(0, vt - start);
+          if (tt >= dur) { renderFrame(ctx, start + dur - 0.001); await encodeUpTo(N - 1); return resolve(); }
+          syncMedia(start + tt, true);
+          renderFrame(ctx, start + tt);
+          await encodeUpTo(Math.floor(tt * fps));
+          ui.preview(canvas);
+          ui.setP(0.12 + (tt / dur) * 0.8, tr('Renderizando {a} / {b}', { a: Math.min(N, encoded), b: N }));
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+    }
+    await enc.flush().catch(() => {});
+  } finally {
+    enc.close?.();
+    player.rateMul = 1;
+    player.exporting = false;
+    for (const p of allPlayers().values()) p.el.pause();
+    masterGain().gain.value = prevGain;
+  }
+  if (encErr) throw encErr;
+  return config;
+}
+
+/**
+ * Exporta rápido. ui: { setP(p, text), cancelled(), preview(canvas) }
+ * Retorna o caminho do arquivo final (desktop) ou o endereço na galeria (celular).
+ */
+export async function fastExport(o, outPath, ui, tr) {
+  if (api.isMobile) {
+    const { mobileExport } = await import('./mobile/export.js');
+    return mobileExport(o, ui, tr);
+  }
+  const start = o.start || 0, dur = o.duration, fps = o.fps;
   const audioOnly = o.format === 'mp3';
   await api.fxBegin();
 
@@ -164,80 +251,15 @@ export async function fastExport(o, outPath, ui, tr) {
   if (ui.cancelled()) { await api.fxEnd({ cancel: true }); return null; }
 
   if (!audioOnly) {
-    // 2) vídeo
-    const canvas = document.createElement('canvas');
-    canvas.width = o.W; canvas.height = o.H;
-    const ctx = canvas.getContext('2d', { alpha: false });
-    const config = { codec: avcCodec(o.W, o.H), width: o.W, height: o.H, bitrate: o.bitrate, framerate: fps, avc: { format: 'annexb' }, latencyMode: 'quality' };
-    const sup = await VideoEncoder.isConfigSupported({ ...config, hardwareAcceleration: 'prefer-hardware' }).catch(() => ({ supported: false }));
-    if (sup.supported) config.hardwareAcceleration = 'prefer-hardware';
+    // 2) vídeo (H.264 Annex B direto para o FFmpeg juntar com o áudio)
     let pending = Promise.resolve();
-    let encErr = null;
-    const enc = new VideoEncoder({
-      output: (chunk) => { const b = new Uint8Array(chunk.byteLength); chunk.copyTo(b); pending = pending.then(() => api.fxVideo(b.buffer)); },
-      error: (e) => { encErr = e; },
-    });
-    enc.configure(config);
-    const gop = fps * 2;
-    let encoded = 0;
-    const encodeUpTo = async (idx) => {
-      while (encoded <= idx && encoded < N) {
-        const frame = new VideoFrame(canvas, { timestamp: Math.round(encoded * 1e6 / fps), duration: Math.round(1e6 / fps) });
-        enc.encode(frame, { keyFrame: encoded % gop === 0 });
-        frame.close();
-        encoded++;
-        if (enc.encodeQueueSize > 6) await new Promise((r) => setTimeout(r, 1));
-      }
-    };
-    const prevGain = masterGain().gain.value;
-    masterGain().gain.value = 0; // o áudio já foi mixado offline
-    player.exporting = true;
     try {
-      if (!hasVideoIn(start, dur)) {
-        // sem vídeo: o mais rápido possível
-        for (let f = 0; f < N; f++) {
-          if (ui.cancelled() || encErr) break;
-          renderFrame(ctx, start + f / fps);
-          await encodeUpTo(f);
-          if (f % 10 === 0) { ui.preview(canvas); ui.setP(0.12 + (f / N) * 0.8, tr('Renderizando {a} / {b}', { a: f, b: N })); await new Promise((r) => setTimeout(r, 0)); }
-        }
-      } else {
-        // com vídeo: reprodução acelerada
-        const RATE = 2;
-        player.rateMul = RATE;
-        syncMedia(start, false);
-        await new Promise((r) => setTimeout(r, 800));
-        let tt = 0, last = performance.now();
-        await new Promise((resolve) => {
-          const tick = async () => {
-            if (ui.cancelled() || encErr) return resolve();
-            const now = performance.now();
-            tt += Math.min(0.1, (now - last) / 1000) * RATE;
-            last = now;
-            // usa o próprio vídeo como relógio (evita dessincronizar do áudio mixado)
-            const vt = videoClock(start + tt);
-            if (vt != null && Math.abs(vt - (start + tt)) < 0.5) tt = Math.max(0, vt - start);
-            if (tt >= dur) { renderFrame(ctx, start + dur - 0.001); await encodeUpTo(N - 1); return resolve(); }
-            syncMedia(start + tt, true);
-            renderFrame(ctx, start + tt);
-            await encodeUpTo(Math.floor(tt * fps));
-            ui.preview(canvas);
-            ui.setP(0.12 + (tt / dur) * 0.8, tr('Renderizando {a} / {b}', { a: Math.min(N, encoded), b: N }));
-            requestAnimationFrame(tick);
-          };
-          requestAnimationFrame(tick);
-        });
-      }
-      await enc.flush().catch(() => {});
+      await encodeVideo(o, ui, tr, {
+        format: 'annexb',
+        output: (chunk) => { const b = new Uint8Array(chunk.byteLength); chunk.copyTo(b); pending = pending.then(() => api.fxVideo(b.buffer)); },
+      });
       await pending;
-    } finally {
-      enc.close?.();
-      player.rateMul = 1;
-      player.exporting = false;
-      for (const p of allPlayers().values()) p.el.pause();
-      masterGain().gain.value = prevGain;
-    }
-    if (encErr) { await api.fxEnd({ cancel: true }); throw encErr; }
+    } catch (e) { await pending.catch(() => {}); await api.fxEnd({ cancel: true }); throw e; }
   }
   if (ui.cancelled()) { await api.fxEnd({ cancel: true }); return null; }
   ui.setP(0.93, tr('Finalizando o arquivo...'));

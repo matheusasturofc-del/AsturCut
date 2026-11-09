@@ -224,7 +224,7 @@ async function runCaptions(o) {
         else if (d.type === 'error') reject(new Error(d.message));
       };
       w.onerror = (e) => reject(new Error(e.message || 'worker'));
-      w.postMessage({ audio, model: MODELS[o.quality].id, language: o.lang || null }, [audio.buffer]);
+      w.postMessage({ audio, model: MODELS[o.quality].id, language: o.lang || null, vendor: window.ASTUR_VENDOR?.transformers || null }, [audio.buffer]);
     });
     if (cancelled) return;
     m.close();

@@ -6,7 +6,7 @@ import { fastSupported, fastExport, clearDecoded } from './fastExport.js';
 import { prepareKeying } from './keying.js';
 import { renderFrame } from './compositor.js';
 import { player, pause, syncMedia, draw } from './player.js';
-import { allPlayers, exportAudioStream, audioCtx, isDesktop, api } from './media.js';
+import { allPlayers, exportAudioStream, audioCtx, isDesktop, isMobile, api } from './media.js';
 import { settings } from './settings.js';
 
 const RES = [[480, '480p'], [720, '720p'], [1080, '1080p'], [1440, '2K'], [2160, '4K']];
@@ -74,7 +74,7 @@ export function openExportDialog() {
   const saveLast = () => settings.set('exportLast', { ...(settings.get('exportLast') || {}), mode: opts.mode });
   const name = el('input', { class: 'input', value: opts.name });
   name.addEventListener('input', () => (opts.name = name.value));
-  const formats = isDesktop
+  const formats = isMobile ? [['mp4', 'MP4 (H.264)']] : isDesktop
     ? [['mp4', 'MP4 (H.264) — recomendado'], ['webm', 'WebM (VP9)'], ['mov', 'MOV (H.264)'], ['gif', 'GIF animado'], ['mp3', 'Somente áudio (MP3)']]
     : [['webm', 'WebM (VP9)']];
   const applyPreset = (pr) => {
@@ -94,7 +94,7 @@ export function openExportDialog() {
   const presetRow = el('div', { class: 'chips exp-presets' });
   const fillPresets = () => {
     presetRow.innerHTML = '';
-    const list = isDesktop ? PRESETS : PRESETS.filter((p) => p.format === 'mp4').map((p) => ({ ...p, format: 'webm' }));
+    const list = isMobile ? PRESETS.filter((p) => p.format === 'mp4') : isDesktop ? PRESETS : PRESETS.filter((p) => p.format === 'mp4').map((p) => ({ ...p, format: 'webm' }));
     for (const pr of list) presetRow.append(el('button', { class: 'chip', 'data-id': pr.id, onclick: () => applyPreset(pr) }, pr.name));
     for (const pr of custom()) {
       const b = el('button', { class: 'chip no-tr', 'data-id': pr.id, title: t('Clique com o botão direito para apagar'), onclick: () => applyPreset(pr) }, pr.name);
@@ -124,7 +124,7 @@ export function openExportDialog() {
       field('Formato', sel('format', formats)),
       hasRange ? field('Intervalo', sel('range', [['all', 'Linha do tempo inteira'], ['io', `${t('Entrada → Saída')} (${fmtTime(rIn, opts.fps)} – ${fmtTime(rOut, opts.fps)})`]])) : null,
       field('Qualidade', sel('quality', [['low', 'Baixa (arquivo menor)'], ['medium', 'Recomendada'], ['high', 'Alta'], ['max', 'Máxima']])),
-      fast ? field('Modo', sel('mode', [['fast', 'Rápido (recomendado)'], ['realtime', 'Tempo real (compatível)']])) : null,
+      fast && !isMobile ? field('Modo', sel('mode', [['fast', 'Rápido (recomendado)'], ['realtime', 'Tempo real (compatível)']])) : null,
       est,
       warn,
       el('div', { class: 'exp-note' }, el('span', { html: icon('info', 14) }), note),
@@ -295,9 +295,11 @@ function done(path, secs) {
     title: 'Exportação concluída', width: 440,
     body: el('div', { class: 'done-box' }, el('div', { class: 'done-icon', html: icon('check', 36) }), el('div', {}, 'Seu vídeo foi exportado com sucesso!'),
       secs ? el('div', { class: 'muted small' }, t('Feito em {s}', { s: fmtTime(secs, 1, false) })) : null,
-      path ? el('div', { class: 'muted small path' }, path) : null),
+      path ? el('div', { class: 'muted small path' }, isMobile ? t('Salvo na galeria: Filmes/AsturCut') : path) : null),
     actions: [
-      path ? { label: 'Abrir pasta', onClick: () => api.showItem(path) } : null,
+      path && isMobile ? { label: 'Compartilhar', onClick: () => api.showItem(path) } : null,
+      path && isMobile ? { label: 'Assistir', onClick: () => api.openFile(path) } : null,
+      path && !isMobile ? { label: 'Abrir pasta', onClick: () => api.showItem(path) } : null,
       { label: 'Fechar', primary: true },
     ].filter(Boolean),
   });

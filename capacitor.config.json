@@ -1,0 +1,19 @@
+{
+  "appId": "com.asturcut.editor",
+  "appName": "AsturCut",
+  "webDir": "mobile/www",
+  "android": {
+    "backgroundColor": "#141416",
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "style": "DARK",
+      "initialViewportFitValueHint": "cover"
+    }
+  }
+}

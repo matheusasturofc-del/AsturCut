@@ -203,12 +203,15 @@ export function dragHandler(e, onMove, onUp, cursor) {
   const up = (ev) => {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
     document.body.style.cursor = '';
     document.body.classList.remove('dragging');
     onUp && onUp(ev, ev.clientX - sx, ev.clientY - sy);
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);
+  // toque: o sistema pode cancelar o gesto (rolagem) — trata como soltar
+  window.addEventListener('pointercancel', up, { once: true });
 }
 
 // ---------- Ícones SVG (traço) ----------

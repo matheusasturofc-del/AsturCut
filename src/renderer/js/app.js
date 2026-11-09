@@ -9,11 +9,13 @@ import { initTimeline, setMode, zoom, fit } from './timeline.js';
 import { initInspector } from './inspector.js';
 import { openExportDialog } from './exporter.js';
 import { openCustomize } from './customize.js';
-import { importViaDialog, importDropped, loadUserFonts, isDesktop, api } from './media.js';
+import { importViaDialog, importDropped, loadUserFonts, isDesktop, isMobile, canRecordScreen, api } from './media.js';
 import { addText } from './actions.js';
 import { t, initLang, detectLang, startAutoTranslate } from './i18n.js';
 import { saveProject, newProject, openProject, confirmDiscard, getRecent, scheduleRecovery, clearRecovery, defaultName } from './projects.js';
 import { showHome, hideHome, isHomeVisible } from './home.js';
+import { mobileUI } from './mobile/detect.js';
+import { initMobileUI } from './mobile/ui.js';
 import { actionFor, GLOBAL } from './keymap.js';
 import { openNewProjectDialog } from './newProject.js';
 import { checkForUpdates, startUpdateChecks } from './updates.js';
@@ -40,7 +42,7 @@ function buildTitlebar() {
       el('button', { class: 'tb-btn pill', title: t('Personalizar (Ctrl+,)'), onclick: () => openCustomize('theme'), html: icon('palette', 14) + `<span>${t('Personalizar')}</span>` }),
       el('button', { class: 'tb-btn pill tb-editor', title: t('Salvar (Ctrl+S)'), onclick: () => saveProject(), html: icon('save', 14) + `<span>${t('Salvar')}</span>` }),
       el('button', { class: 'tb-btn export tb-editor', title: t('Exportar (Ctrl+E)'), onclick: () => openExportDialog(), html: icon('export', 14) + `<span>${t('Exportar')}</span>` }),
-      isDesktop ? el('div', { class: 'win-ctrls' },
+      isDesktop && !isMobile ? el('div', { class: 'win-ctrls' },
         el('button', { class: 'win-btn', title: t('Minimizar'), onclick: () => api.minimize(), html: icon('min', 14) }),
         el('button', { class: 'win-btn', id: 'win-max', title: t('Maximizar'), onclick: () => api.maximize(), html: icon('max', 12) }),
         el('button', { class: 'win-btn close', title: t('Fechar'), onclick: () => api.close(), html: icon('close', 14) })) : null,
@@ -76,7 +78,7 @@ function mainMenu(anchor) {
     { label: t('Refazer'), shortcut: 'Ctrl+Y', onClick: () => store.redo() },
     '-',
     { label: t('Mixer de áudio'), shortcut: 'Ctrl+Alt+M', onClick: () => openMixer() },
-    isDesktop ? { label: t('Gravar tela e webcam...'), onClick: () => openRecorder() } : null,
+    canRecordScreen ? { label: t('Gravar tela e webcam...'), onClick: () => openRecorder() } : null,
     { label: t('Legendas automáticas...'), onClick: () => openCaptionsDialog() },
     { label: t('Tirar silêncios...'), onClick: () => removeSilencesDialog() },
     { label: t('Maximizar painel sob o mouse'), shortcut: '`', onClick: () => toggleMaximize() },
@@ -86,8 +88,8 @@ function mainMenu(anchor) {
     { label: t('Tela inicial'), onClick: () => showHome() },
     isDesktop ? { label: t('Verificar atualizações...'), onClick: () => checkForUpdates({ manual: true }) } : null,
     { label: t('Sobre o AsturCut'), onClick: () => openCustomize('about') },
-    isDesktop ? '-' : null,
-    isDesktop ? { label: t('Sair'), onClick: () => api.close() } : null,
+    isDesktop && !isMobile ? '-' : null,
+    isDesktop && !isMobile ? { label: t('Sair'), onClick: () => api.close() } : null,
   ]);
 }
 
@@ -226,6 +228,7 @@ async function boot() {
   initPlayer();
   initTimeline();
   initInspector();
+  if (mobileUI) initMobileUI({ showHome, isHomeVisible });
   startAutoTranslate();
   window.astur?.bootStep?.('fonts');
   await Promise.race([loadUserFonts(), new Promise((r) => setTimeout(r, 2500))]);

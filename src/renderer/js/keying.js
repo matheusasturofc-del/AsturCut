@@ -77,7 +77,7 @@ export function ensureSegmenter() {
   if (seg) return Promise.resolve(seg);
   if (segLoading) return segLoading;
   segLoading = (async () => {
-    const base = new URL('../vendor/mediapipe/', import.meta.url).href;
+    const base = window.ASTUR_VENDOR?.mediapipe || new URL('../vendor/mediapipe/', import.meta.url).href;
     const { FilesetResolver, ImageSegmenter } = await import(base + 'vision_bundle.mjs');
     const fileset = await FilesetResolver.forVisionTasks(base + 'wasm');
     const model = new URL('../assets/models/selfie_segmenter.tflite', import.meta.url).href;

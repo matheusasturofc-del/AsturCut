@@ -2,7 +2,7 @@
 import { store, bus } from './store.js';
 import { $, el, icon, contextMenu, fmtShort } from './util.js';
 import { settings } from './settings.js';
-import { importViaDialog, addBackground, drawBackground, isDesktop, api } from './media.js';
+import { importViaDialog, addBackground, drawBackground, isDesktop, isMobile, canRecordScreen, api } from './media.js';
 import { addMedia, addText, addShape, addSticker, applyEffect, addAudio } from './actions.js';
 import { openNewProjectDialog } from './newProject.js';
 import { newProject, openProject, getRecent, removeRecent, getRecovery, recover, clearRecovery } from './projects.js';
@@ -229,7 +229,7 @@ function homePage() {
     el('div', { class: 'quick-row' },
       quickCard('folder', t('Abrir projeto'), t('Abra um arquivo .astur'), () => openProject()),
       quickCard('import', t('Importar mídia'), t('Comece pelos seus vídeos e fotos'), async () => { if (await openNewProjectDialog()) importViaDialog(); }),
-      isDesktop ? quickCard('record', t('Gravar tela'), t('Tela, webcam e narração em um clique'), async () => { if (await openNewProjectDialog()) openRecorder(); }) : null,
+      canRecordScreen ? quickCard('record', t('Gravar tela'), t('Tela, webcam e narração em um clique'), async () => { if (await openNewProjectDialog()) openRecorder(); }) : null,
       quickCard('sparkle', t('Intro animada'), t('Título com gradiente, animação e efeito sonoro'), () => useTemplate(TEMPLATES[0])),
       quickCard('image', t('Slideshow de fotos'), t('Escolha suas fotos: transições e música automáticas'), () => useTemplate(TEMPLATES[1])),
     ),
@@ -267,7 +267,7 @@ function projectGrid(list, searching = false) {
       e.stopPropagation();
       contextMenu(e.clientX, e.clientY, [
         { label: t('Abrir'), onClick: () => openProject(r.path) },
-        isDesktop ? { label: t('Mostrar na pasta'), onClick: () => api.showItem(r.path) } : null,
+        isDesktop ? { label: isMobile ? t('Compartilhar') : t('Mostrar na pasta'), onClick: () => api.showItem(r.path) } : null,
         '-',
         { label: t('Remover da lista'), onClick: () => removeRecent(r.path) },
       ]);

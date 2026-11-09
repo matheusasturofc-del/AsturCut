@@ -1109,4 +1109,14 @@ export const DICT = {
   "Tela, webcam e narração em um clique": ["Screen, webcam and narration in one click", "Pantalla, webcam y narración en un clic"],
   "Tirar silêncios automaticamente": ["Remove silences automatically", "Quitar silencios automáticamente"],
   "Tirar silêncios...": ["Remove silences...", "Quitar silencios..."],
+
+  // ---------- Versão Android ----------
+  "Biblioteca": ["Library", "Biblioteca"],
+  "Editar": ["Edit", "Editar"],
+  "Compartilhar": ["Share", "Compartir"],
+  "Assistir": ["Watch", "Ver"],
+  "Salvando na galeria...": ["Saving to gallery...", "Guardando en la galería..."],
+  "Salvando na galeria... {p}%": ["Saving to gallery... {p}%", "Guardando en la galería... {p}%"],
+  "Salvo na galeria: Filmes/AsturCut": ["Saved to gallery: Movies/AsturCut", "Guardado en la galería: Películas/AsturCut"],
+  "MP4 (H.264)": ["MP4 (H.264)", "MP4 (H.264)"],
 };

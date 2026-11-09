@@ -1,13 +1,19 @@
 // Worker de reconhecimento de fala (Whisper via Transformers.js) — roda no computador, sem servidor.
 // Recebe áudio mono 16 kHz, divide em trechos de ~25 s nos pontos mais silenciosos e devolve as palavras com tempo.
-import { pipeline, env } from '../../vendor/transformers/transformers.min.js';
-
-env.allowLocalModels = false;
-env.useBrowserCache = true;
-env.backends.onnx.wasm.wasmPaths = new URL('../../vendor/transformers/', import.meta.url).href;
-try {
-  if (typeof SharedArrayBuffer !== 'undefined') env.backends.onnx.wasm.numThreads = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
-} catch {}
+// a biblioteca é carregada sob demanda: do próprio app (PC) ou da internet (celular, para o APK ficar leve)
+let pipeline = null, env = null;
+async function lib(vendor) {
+  if (pipeline) return;
+  const base = vendor || new URL('../../vendor/transformers/', import.meta.url).href;
+  const m = await import(base + 'transformers.min.js');
+  pipeline = m.pipeline; env = m.env;
+  env.allowLocalModels = false;
+  env.useBrowserCache = true;
+  env.backends.onnx.wasm.wasmPaths = base;
+  try {
+    if (typeof SharedArrayBuffer !== 'undefined') env.backends.onnx.wasm.numThreads = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+  } catch {}
+}
 
 const SR = 16000;
 let asr = null, loadedKey = '';
@@ -60,8 +66,9 @@ function cutPoints(audio) {
 }
 
 self.onmessage = async (e) => {
-  const { audio, model, language } = e.data;
+  const { audio, model, language, vendor } = e.data;
   try {
+    await lib(vendor);
     let device = e.data.device || 'auto';
     if (device === 'auto') device = (await hasWebGPU()) ? 'webgpu' : 'wasm';
     post({ type: 'status', stage: 'load', device });

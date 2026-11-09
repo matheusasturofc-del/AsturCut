@@ -1,6 +1,6 @@
 # AsturCut — Editor de vídeo para PC
 
-Editor de vídeo para **Windows** e **Linux (Ubuntu, Zorin OS, Linux Mint, Pop!_OS…)** no estilo CapCut / Premiere, com tema escuro e destaque ciano por padrão e tudo personalizável.
+Editor de vídeo para **Windows**, **Linux (Ubuntu, Zorin OS, Linux Mint, Pop!_OS…)** e **celular Android** no estilo CapCut / Premiere, com tema escuro e destaque ciano por padrão e tudo personalizável.
 
 ![logo](build/icon.png)
 
@@ -37,6 +37,20 @@ sudo apt remove asturcut
 - **`AsturCut-x.y.z-x86_64.AppImage`** — funciona em qualquer distro sem instalar. Clique com o botão direito → *Propriedades → Permitir executar como programa* e abra. No Ubuntu 22.04/Zorin 17 pode ser preciso instalar `libfuse2` (`sudo apt install libfuse2`).
 
 No Linux o AsturCut abre no idioma do sistema (dá para trocar na tela inicial). As preferências ficam em `~/.config/AsturCut` e as gravações em `~/Documentos/AsturCut/Gravações`. Na gravação de tela pelo Wayland, o próprio sistema pode pedir para você escolher a tela.
+
+## Celular Android (APK)
+
+Na página da **Release** (ou em *Actions → Artifacts → AsturCut-Android*) baixe o **`AsturCut-x.y.z.apk`** (~4 MB) no celular e toque nele para instalar. Na primeira vez o Android pede para **permitir instalar apps desta fonte** (Chrome ou Arquivos) — é só permitir. Precisa de Android 10 ou mais novo.
+
+- Interface de celular: exibidor em cima, linha do tempo no meio e ferramentas embaixo (Mídia, Áudio, Texto, Stickers, Efeitos, Filtros, Transições, Animações e Editar). Pinça na linha do tempo dá zoom, toque duplo no clipe abre as propriedades e o botão voltar fecha as gavetas.
+- **Importar**: escolha vídeos, fotos e músicas da galeria — o AsturCut guarda uma cópia para o projeto continuar funcionando.
+- **Exportar**: gera **MP4** no próprio celular (usa o codificador de vídeo do aparelho) e salva na galeria em *Filmes/AsturCut*, com botões **Assistir** e **Compartilhar** (WhatsApp, Instagram, Drive…).
+- Legendas automáticas, remover fundo e tirar silêncios também funcionam; as bibliotecas de IA são baixadas só na primeira vez que você usar (por isso o APK fica leve).
+- Gravação de tela é só no PC.
+
+Atualizar: o app avisa quando sai versão nova; baixe o APK novo e instale por cima (os projetos continuam).
+
+> Assinatura do APK: o GitHub Actions gera uma chave uma vez e guarda no cache para as próximas versões instalarem por cima. Para deixar a chave permanente, crie os segredos `ANDROID_KEYSTORE_B64` (arquivo .jks em base64), `ANDROID_KEYSTORE_PASSWORD` e `ANDROID_KEY_ALIAS` em *Settings → Secrets and variables → Actions*.
 
 ## Como atualizar
 
@@ -136,6 +150,19 @@ npx electron-builder --linux deb AppImage
 
 Os arquivos ficam em `dist/`.
 
+## Gerar o APK (Android)
+
+Precisa do Node.js 22, Java 21 e Android SDK:
+
+```bash
+npm install
+node scripts/build-mobile.js
+npx cap sync android
+cd android && ./gradlew assembleRelease
+```
+
+O APK fica em `android/app/build/outputs/apk/release/`.
+
 ## Gerar o instalador no seu PC (Windows)
 
 ```bash
@@ -159,6 +186,8 @@ src/renderer/    interface
   js/settings.js     temas e preferências
   js/layout.js       layout personalizável
 scripts/prepare-fonts.js  copia as fontes grátis (roda no npm install)
+scripts/build-mobile.js   monta a versão de celular (mobile/www) para o Capacitor
+android/                  projeto Android (Capacitor + plugin nativo AsturNative)
 scripts/prepare-vendor.js copia as bibliotecas de IA local (Transformers.js/ONNX e MediaPipe) para src/renderer/vendor
 electron-builder.yml      configuração do instalador (NSIS)
 ```
