@@ -23,10 +23,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Ler versão
-        id: ver
-        shell: bash
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Instalar dependências
         run: npm ci
       - name: Gerar instalador Windows (.exe)
@@ -39,12 +35,51 @@ jobs:
           name: AsturCut-Instalador-Windows
           path: dist/*.exe
           retention-days: 30
+
+  linux:
+    # Ubuntu, Zorin OS, Linux Mint, Pop!_OS (.deb) e outras distros (AppImage)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci
+      - name: Gerar pacotes Linux (.deb e AppImage)
+        run: npx electron-builder --linux deb AppImage --publish never
+      - name: Enviar pacotes
+        uses: actions/upload-artifact@v4
+        with:
+          name: AsturCut-Linux
+          path: |
+            dist/*.deb
+            dist/*.AppImage
+          retention-days: 30
+
+  release:
+    needs: [windows, linux]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publicar)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ler versão
+        id: ver
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Baixar instaladores
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       - name: Publicar release (tag v* ou botão "publicar")
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publicar)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.ver.outputs.version) }}
           target_commitish: ${{ github.sha }}
           name: AsturCut ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.ver.outputs.version) }}
           generate_release_notes: true
-          files: dist/*.exe
+          files: |
+            dist/*.exe
+            dist/*.deb
+            dist/*.AppImage

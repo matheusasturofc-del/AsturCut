@@ -1,6 +1,7 @@
 {
   "name": "asturcut",
   "productName": "AsturCut",
+  "desktopName": "asturcut.desktop",
   "version": "1.3.0",
   "description": "AsturCut - Editor de vídeo para PC",
   "main": "src/main/main.js",

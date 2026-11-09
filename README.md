@@ -1,6 +1,6 @@
 # AsturCut — Editor de vídeo para PC
 
-Editor de vídeo para Windows no estilo CapCut / Premiere, com tema escuro e destaque ciano por padrão, instalador `.exe` e tudo personalizável.
+Editor de vídeo para **Windows** e **Linux (Ubuntu, Zorin OS, Linux Mint, Pop!_OS…)** no estilo CapCut / Premiere, com tema escuro e destaque ciano por padrão e tudo personalizável.
 
 ![logo](build/icon.png)
 
@@ -18,6 +18,26 @@ O instalador tem visual moderno e escuro: na primeira tela você escolhe o idiom
 
 Como o instalador não é assinado digitalmente, o Windows SmartScreen pode mostrar um aviso. Clique em **Mais informações → Executar assim mesmo**.
 
+## Linux: Ubuntu / Zorin OS
+
+Na página da **Release** (ou em *Actions → Artifacts → AsturCut-Linux*) baixe:
+
+- **`AsturCut-x.y.z-amd64.deb`** — recomendado para Zorin OS, Ubuntu, Linux Mint e Pop!_OS. Dê dois cliques no arquivo e clique em **Instalar** (abre a loja de aplicativos do sistema). Ou pelo terminal:
+
+```bash
+sudo apt install ./AsturCut-1.3.0-amd64.deb
+```
+
+  Depois é só procurar **AsturCut** no menu de aplicativos. Para atualizar, instale o `.deb` novo por cima. Para remover:
+
+```bash
+sudo apt remove asturcut
+```
+
+- **`AsturCut-x.y.z-x86_64.AppImage`** — funciona em qualquer distro sem instalar. Clique com o botão direito → *Propriedades → Permitir executar como programa* e abra. No Ubuntu 22.04/Zorin 17 pode ser preciso instalar `libfuse2` (`sudo apt install libfuse2`).
+
+No Linux o AsturCut abre no idioma do sistema (dá para trocar na tela inicial). As preferências ficam em `~/.config/AsturCut` e as gravações em `~/Documentos/AsturCut/Gravações`. Na gravação de tela pelo Wayland, o próprio sistema pode pedir para você escolher a tela.
+
 ## Como atualizar
 
 O AsturCut avisa sozinho quando sai uma versão nova: aparece **"Nova atualização disponível!"** com o botão **Atualizar agora**, que baixa o instalador mais recente. Também dá para verificar em *Menu → Verificar atualizações...*.
@@ -29,7 +49,7 @@ Para atualizar, é só abrir o instalador novo. Ele instala por cima e mantém s
 1. Mude a versão em `package.json` (por exemplo, `1.3.0`), faça o commit e envie.
 2. No GitHub, abra **Actions → Gerar instalador → Run workflow**, deixe marcado **"Publicar uma Release"** e clique em **Run workflow**.
 
-Em poucos minutos sai a **Release** `v1.3.0` com o instalador `.exe`, e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.3.0` também funciona.
+Em poucos minutos sai a **Release** `v1.3.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.3.0` também funciona.
 
 ## Recursos
 
@@ -106,6 +126,15 @@ npm install
 ```bash
 npm start
 ```
+
+## Gerar os pacotes no Linux
+
+```bash
+npm install
+npx electron-builder --linux deb AppImage
+```
+
+Os arquivos ficam em `dist/`.
 
 ## Gerar o instalador no seu PC (Windows)
 

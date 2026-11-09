@@ -8,7 +8,8 @@ const { spawn } = require('child_process');
 
 const isDev = process.argv.includes('--dev');
 // IA local (legendas): permite várias threads no WebAssembly
-app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer');
+// Linux (Wayland, ex.: Ubuntu/Zorin OS): captura de tela pelo PipeWire
+app.commandLine.appendSwitch('enable-features', process.platform === 'linux' ? 'SharedArrayBuffer,WebRTCPipeWireCapturer' : 'SharedArrayBuffer');
 let win = null;
 let pendingOpenFile = null;
 let lang = 'pt';
@@ -232,7 +233,9 @@ ipcMain.handle('app:check-update', async () => {
   const r = await net.fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, { headers: { 'User-Agent': 'AsturCut-Updater', Accept: 'application/vnd.github+json' } });
   if (!r.ok) return { ok: false, status: r.status, current: app.getVersion() };
   const j = await r.json();
-  const exe = (j.assets || []).find((a) => /\.exe$/i.test(a.name) && !/blockmap/i.test(a.name));
+  // instalador certo para o sistema: .exe (Windows), .deb (Ubuntu/Zorin OS) ou AppImage
+  const want = process.platform === 'win32' ? /\.exe$/i : process.platform === 'linux' ? (process.env.APPIMAGE ? /\.AppImage$/i : /\.deb$/i) : /\.dmg$/i;
+  const exe = (j.assets || []).find((a) => want.test(a.name) && !/blockmap/i.test(a.name));
   return {
     ok: true, current: app.getVersion(),
     version: String(j.tag_name || '').replace(/^v/i, ''), name: j.name || j.tag_name,
