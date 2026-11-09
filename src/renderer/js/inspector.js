@@ -214,12 +214,18 @@ function tabsFor(c) {
   return [['basic', 'Básico']];
 }
 
+// celular: mostra só uma ferramenta por vez (ex.: 'speed', 'anim', 'keying')
+let focusTab = null;
+export function inspectorFocus(tab) { focusTab = tab; render(); }
+
 function renderClip(c) {
   const tabs = tabsFor(c);
   let active = lastTab[c.type];
-  if (!tabs.some((t) => t[0] === active)) active = tabs[0][0];
-  header('', tabs, active, (id) => { lastTab[c.type] = id; render(); });
-  const fn = { basic: basicTab, text: textTab, audio: audioTab, speed: speedTab, anim: animTab, adjust: adjustTab, fx: fxTab, filter: filterTab, timing: timingTab }[active];
+  if (focusTab === 'keying' && (c.type === 'video' || c.type === 'image')) active = 'keying';
+  else if (focusTab && tabs.some((x) => x[0] === focusTab)) active = focusTab;
+  if (!tabs.some((t) => t[0] === active) && active !== 'keying') active = tabs[0][0];
+  if (!focusTab) header('', tabs, active, (id) => { lastTab[c.type] = id; render(); });
+  const fn = { basic: basicTab, text: textTab, audio: audioTab, speed: speedTab, anim: animTab, adjust: adjustTab, fx: fxTab, filter: filterTab, timing: timingTab, keying: (x) => bodyEl.append(keyingSection(x)) }[active];
   fn(c);
   bodyEl.append(el('div', { class: 'insp-foot muted small' }, t('Início {a} · Duração {b}', { a: fmtShort(c.start), b: fmtShort(c.duration) })));
 }
@@ -267,7 +273,7 @@ function basicTab(c) {
       slider('Cortar base', Math.round(cr.b * 100), { min: 0, max: 90, unit: '%', def: 0, onInput: (v) => upd(c, { crop: { ...cr, ...(c.crop || {}), b: v / 100 } }) }),
     ));
   }
-  if (media) bodyEl.append(keyingSection(c));
+  if (media && focusTab !== 'basic') bodyEl.append(keyingSection(c));
   bodyEl.append(section('Mistura',
     select('Modo:', c.blend, [['source-over', 'Normal'], ['multiply', 'Multiplicar'], ['screen', 'Tela'], ['overlay', 'Sobrepor'], ['darken', 'Escurecer'], ['lighten', 'Clarear'], ['color-dodge', 'Subexposição de cor'], ['color-burn', 'Superexposição de cor'], ['hard-light', 'Luz forte'], ['soft-light', 'Luz suave'], ['difference', 'Diferença'], ['exclusion', 'Exclusão'], ['hue', 'Matiz'], ['saturation', 'Saturação'], ['color', 'Cor'], ['luminosity', 'Luminosidade']], (v) => updC(c, { blend: v })),
   ));

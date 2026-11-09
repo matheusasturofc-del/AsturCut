@@ -11,6 +11,10 @@ import { t, LANG, LANGS, locale, saveLang } from './i18n.js';
 import { toast, confirmDialog } from './util.js';
 import { latest, openUpdate } from './updates.js';
 import { openRecorder } from './recorder.js';
+import { mobileUI } from './mobile/detect.js';
+import { quickStart, openCutoutForFirst } from './mobile/editor.js';
+import { openCaptionsDialog } from './captions.js';
+import { removeSilencesDialog } from './silence.js';
 bus.on('update-available', () => { if (document.body.classList.contains('home-mode')) render(); });
 
 let page = 'home';
@@ -166,6 +170,7 @@ function relDate(d) {
 function render() {
   const view = $('#home-view');
   view.innerHTML = '';
+  if (mobileUI) { view.append(page === 'templates' ? mobileTemplates() : mobileHome()); return; }
   view.append(sidebar(), el('div', { class: 'home-main' }, el('div', { class: 'home-inner' }, ...(page === 'projects' ? projectsPage() : page === 'templates' ? templatesPage() : homePage()))));
 }
 
@@ -300,6 +305,51 @@ function templatesPage() {
     el('div', { class: 'page-head' }, el('div', {}, el('h1', {}, t('Modelos prontos')), el('div', { class: 'muted' }, t('Comece com uma base pronta e edite do seu jeito.')))),
     grid,
   ];
+}
+
+// ---------- Tela inicial do celular ----------
+function mobileHome() {
+  const rec = getRecovery();
+  const recent = getRecent();
+  const tool = (ic, label, fn) => el('button', { class: 'mh-tool', onclick: fn }, el('span', { html: icon(ic, 22) }), el('small', {}, label));
+  const langSel = el('select', { class: 'mh-lang no-tr' }, LANGS.map((l) => el('option', { value: l.id, selected: l.id === LANG }, l.id.toUpperCase())));
+  langSel.addEventListener('change', () => changeLanguage(langSel.value, langSel));
+  return el('div', { class: 'mh' },
+    el('div', { class: 'mh-top' },
+      el('img', { src: 'assets/logo.svg', width: 28, height: 28 }), el('b', {}, 'AsturCut'),
+      el('div', { class: 'grow' }),
+      latest ? el('button', { class: 'mh-upd', onclick: () => openUpdate() }, t('Atualizar')) : null,
+      el('label', { class: 'mh-langwrap', html: icon('globe', 18) }, langSel),
+      el('button', { class: 'mh-ic', title: t('Personalizar'), onclick: () => openCustomize('theme'), html: icon('settings', 20) })),
+    el('button', { class: 'mh-new', onclick: () => quickStart(newProject) },
+      el('span', { class: 'mh-plus', html: icon('plus', 28) }),
+      el('div', {}, el('b', {}, t('Novo projeto')), el('small', {}, t('Escolha vídeos e fotos da galeria')))),
+    el('div', { class: 'mh-tools' },
+      tool('captions', t('Legendas automáticas'), () => quickStart(newProject, () => openCaptionsDialog())),
+      tool('person', t('Remover fundo'), () => quickStart(newProject, () => openCutoutForFirst())),
+      tool('silence', t('Tirar silêncios'), () => quickStart(newProject, () => removeSilencesDialog())),
+      tool('sparkle', t('Modelos'), () => showHome('templates')),
+      tool('file', t('Projeto vazio'), () => newProject({ aspect: '9:16' }))),
+    rec ? el('div', { class: 'home-recovery' }, el('span', { html: icon('info', 15) }),
+      el('span', { class: 'grow' }, t('Projeto não salvo encontrado: "{name}"', { name: rec.data?.name || '' })),
+      el('button', { class: 'btn sm primary', onclick: () => recover(rec) }, t('Recuperar')),
+      el('button', { class: 'btn sm', onclick: () => { clearRecovery(); render(); } }, t('Descartar'))) : null,
+    store.p.clips.length ? el('button', { class: 'mh-continue', onclick: hideHome }, el('span', { class: 'hs-dot' }), el('span', {}, t('Continuar editando')), el('b', { class: 'no-tr' }, store.p.name)) : null,
+    el('div', { class: 'mh-sec' }, el('b', {}, t('Projetos')), el('span', { class: 'muted' }, String(recent.length))),
+    projectGrid(recent),
+  );
+}
+
+function mobileTemplates() {
+  const grid = el('div', { class: 'tpl-grid' });
+  for (const tp of TEMPLATES) {
+    const c = el('canvas', { width: 480, height: 270 });
+    Promise.resolve().then(() => tp.preview(c.getContext('2d'), 480, 270));
+    grid.append(el('div', { class: 'tpl', onclick: () => useTemplate(tp) }, el('div', { class: 'tpl-thumb' }, c, el('span', { class: 'tpl-ar' }, tp.aspect)), el('b', {}, t(tp.name)), el('small', {}, t(tp.desc))));
+  }
+  return el('div', { class: 'mh' },
+    el('div', { class: 'mh-top' }, el('button', { class: 'mh-ic', onclick: () => showHome('home'), html: icon('chevRight', 22) + '' }), el('b', {}, t('Modelos prontos'))),
+    grid);
 }
 
 void settings; void confirmDialog; void TEMPLATES;

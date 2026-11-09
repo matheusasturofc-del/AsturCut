@@ -45,6 +45,7 @@ public class AsturNativePlugin extends Plugin {
 
     private static class Save {
         Uri uri;
+        File file;
         OutputStream out;
     }
 
@@ -209,6 +210,19 @@ public class AsturNativePlugin extends Plugin {
     public void startSave(PluginCall call) {
         try {
             String name = safe(call.getString("name", "video.mp4"));
+            if ("app".equals(call.getString("target", "gallery"))) {
+                // arquivo dentro do app (ex.: narração gravada) — vira mídia do projeto
+                File f = new File(dir("media"), System.currentTimeMillis() + "_0_" + name);
+                Save s = new Save();
+                s.file = f;
+                s.out = new FileOutputStream(f);
+                String id = UUID.randomUUID().toString();
+                saves.put(id, s);
+                JSObject r = new JSObject();
+                r.put("id", id);
+                call.resolve(r);
+                return;
+            }
             String mime = call.getString("mime", "video/mp4");
             ContentValues cv = new ContentValues();
             cv.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
@@ -255,6 +269,12 @@ public class AsturNativePlugin extends Plugin {
         }
         try {
             s.out.close();
+            if (s.file != null) {
+                JSObject r = new JSObject();
+                r.put("uri", s.file.getAbsolutePath());
+                call.resolve(r);
+                return;
+            }
             ContentValues cv = new ContentValues();
             cv.put(MediaStore.MediaColumns.IS_PENDING, 0);
             getContext().getContentResolver().update(s.uri, cv, null, null);
@@ -271,7 +291,8 @@ public class AsturNativePlugin extends Plugin {
         Save s = saves.remove(call.getString("id", ""));
         if (s != null) {
             try { s.out.close(); } catch (Exception ignored) {}
-            try { getContext().getContentResolver().delete(s.uri, null, null); } catch (Exception ignored) {}
+            if (s.file != null) s.file.delete();
+            else try { getContext().getContentResolver().delete(s.uri, null, null); } catch (Exception ignored) {}
         }
         call.resolve();
     }

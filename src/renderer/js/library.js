@@ -55,8 +55,9 @@ export async function initLibrary() {
   openTab('media');
 }
 
-export function openTab(id) {
+export function openTab(id, subId = null) {
   tab = id; search = '';
+  if (subId) sub[id] = subId;
   document.querySelectorAll('.lib-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === id));
   renderNav();
   renderContent();

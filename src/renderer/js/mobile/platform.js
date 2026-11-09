@@ -82,7 +82,16 @@
     },
     importMedia: function () { return pick('media'); },
     importFonts: function () { return pick('font'); },
-    describeFiles: async function () { return []; },
+    describeFiles: async function (paths) {
+      return (paths || []).map(function (p) { var n = String(p).split('/').pop(); var nm = n.replace(/^\d+_\d+_/, ''); return { path: p, name: nm, size: 0, ext: (nm.split('.').pop() || '').toLowerCase() }; });
+    },
+    // grava um arquivo (ex.: narração) dentro do app e devolve o caminho
+    saveMedia: async function (name, bytes) {
+      var r = await N.startSave({ name: name, mime: 'application/octet-stream', target: 'app' });
+      var CH = 768 * 1024;
+      for (var o = 0; o < bytes.length; o += CH) await N.writeChunk({ id: r.id, data: toB64(bytes.subarray(o, o + CH)) });
+      return (await N.finishSave({ id: r.id })).uri;
+    },
     pathForFile: function () { return ''; },
     mediaUrl: function (p) { return location.origin + '/_astur_media/?p=' + encodeURIComponent(p); },
     saveProject: async function (o) {

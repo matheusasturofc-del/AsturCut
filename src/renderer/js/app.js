@@ -15,7 +15,7 @@ import { t, initLang, detectLang, startAutoTranslate } from './i18n.js';
 import { saveProject, newProject, openProject, confirmDiscard, getRecent, scheduleRecovery, clearRecovery, defaultName } from './projects.js';
 import { showHome, hideHome, isHomeVisible } from './home.js';
 import { mobileUI } from './mobile/detect.js';
-import { initMobileUI } from './mobile/ui.js';
+import { initMobileEditor } from './mobile/editor.js';
 import { actionFor, GLOBAL } from './keymap.js';
 import { openNewProjectDialog } from './newProject.js';
 import { checkForUpdates, startUpdateChecks } from './updates.js';
@@ -228,7 +228,7 @@ async function boot() {
   initPlayer();
   initTimeline();
   initInspector();
-  if (mobileUI) initMobileUI({ showHome, isHomeVisible });
+  if (mobileUI) initMobileEditor({ showHome, isHomeVisible });
   startAutoTranslate();
   window.astur?.bootStep?.('fonts');
   await Promise.race([loadUserFonts(), new Promise((r) => setTimeout(r, 2500))]);
