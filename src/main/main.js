@@ -538,6 +538,43 @@ ipcMain.handle('rec:save', async (_e, { name, buffer }) => {
   return out;
 });
 
+// ---------- Salvar arquivo genérico (quadro PNG, legendas SRT, capítulos) ----------
+ipcMain.handle('file:save-as', async (_e, { name, ext, data, text, title }) => {
+  const safe = String(name || 'arquivo').replace(/[\\/:*?"<>|]/g, '-');
+  const base = ext === 'png' || ext === 'jpg' ? app.getPath('pictures') : app.getPath('documents');
+  const r = await dialog.showSaveDialog(win, { title: title || undefined, defaultPath: path.join(base, `${safe}.${ext}`), filters: [{ name: String(ext).toUpperCase(), extensions: [ext] }] });
+  if (r.canceled || !r.filePath) return null;
+  await fs.promises.writeFile(r.filePath, text != null ? String(text) : Buffer.from(data));
+  return r.filePath;
+});
+ipcMain.handle('file:open-text', async (_e, { exts }) => {
+  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: exts.join(', ').toUpperCase(), extensions: exts }] });
+  if (r.canceled || !r.filePaths?.[0]) return null;
+  return { name: path.basename(r.filePaths[0]), text: await fs.promises.readFile(r.filePaths[0], 'utf8') };
+});
+
+// ---------- Inverter (tocar de trás para frente) um trecho de mídia ----------
+ipcMain.handle('media:reverse', async (e, { path: src, id, start = 0, duration }) => {
+  const dir = path.join(app.getPath('userData'), 'reversed');
+  await fs.promises.mkdir(dir, { recursive: true });
+  const out = path.join(dir, `${String(id).replace(/[^a-z0-9_-]/gi, '')}-rev-${Date.now()}.mp4`);
+  const run = (withAudio) => new Promise((resolve, reject) => {
+    const args = ['-y', '-ss', String(Math.max(0, start)), '-t', String(Math.max(0.1, duration)), '-i', src, '-vf', 'reverse', ...(withAudio ? ['-af', 'areverse', '-c:a', 'aac', '-b:a', '192k'] : ['-an']), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', out];
+    const proc = spawn(ffmpegPath(), args, { windowsHide: true });
+    let log = '';
+    proc.stderr.on('data', (d) => {
+      const s = d.toString();
+      log = (log + s).slice(-3000);
+      const m = /time=(\d+):(\d+):(\d+\.\d+)/.exec(s);
+      if (m) e.sender.send('proxy:progress', { id, p: Math.min(1, (+m[1] * 3600 + +m[2] * 60 + +m[3]) / Math.max(0.1, duration)) });
+    });
+    proc.on('error', reject);
+    proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(tr('ffmpegFail') + log.slice(-400)))));
+  });
+  try { await run(true); } catch { await run(false); } // vídeo sem som
+  return out;
+});
+
 // ---------- Proxies: cópia leve (540p, GOP curto) para editar vídeos pesados ----------
 ipcMain.handle('proxy:make', async (e, { path: src, id }) => {
   const dir = path.join(app.getPath('userData'), 'proxies');

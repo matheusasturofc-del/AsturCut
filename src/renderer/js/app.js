@@ -26,6 +26,7 @@ import { openCaptionsDialog } from './captions.js';
 import { removeSilencesDialog } from './silence.js';
 import { stabilize, autoReframeDialog } from './analysis.js';
 import { newSequence, nestSelection } from './sequences.js';
+import { exportFrame, exportSrt, importSrt, chaptersDialog, splitLayoutDialog, reverseClip, beatsDialog, normalizeDialog, colorMatchSelected } from './extras.js';
 import { multicamDialog, openMulticamMonitor } from './multicam.js';
 import { freezeFrame, openHistory, detectScenes, autoDuckDialog, audioCrossfades, createProxiesDialog, toggleProxies } from './protools.js';
 import { toggleScopes } from './color.js';
@@ -79,6 +80,12 @@ function mainMenu(anchor) {
     '-',
     { label: t('Importar mídia...'), shortcut: 'Ctrl+I', onClick: () => importViaDialog() },
     { label: t('Exportar...'), shortcut: 'Ctrl+E', onClick: () => openExportDialog() },
+    { label: t('Exportar quadro como imagem (PNG)'), shortcut: 'Ctrl+Shift+E', onClick: () => exportFrame() },
+    { label: t('Legendas e capítulos'), submenu: [
+      { label: t('Exportar legendas (.srt)'), onClick: () => exportSrt() },
+      { label: t('Importar legendas (.srt)...'), onClick: () => importSrt() },
+      { label: t('Capítulos do YouTube...'), shortcut: 'Ctrl+Shift+M', onClick: () => chaptersDialog() },
+    ] },
     '-',
     { label: t('Desfazer'), shortcut: 'Ctrl+Z', onClick: () => store.undo() },
     { label: t('Refazer'), shortcut: 'Ctrl+Y', onClick: () => store.redo() },
@@ -95,6 +102,12 @@ function mainMenu(anchor) {
       { label: t('Detectar cenas e cortar...'), onClick: () => detectScenes() },
       { label: t('Estabilizar vídeo'), onClick: () => stabilize() },
       { label: t('Reenquadrar automaticamente...'), onClick: () => autoReframeDialog() },
+      '-',
+      { label: t('Tela dividida / layouts...'), onClick: () => splitLayoutDialog() },
+      { label: t('Inverter clipe (de trás para frente)'), shortcut: 'Ctrl+Alt+R', onClick: () => reverseClip() },
+      { label: t('Igualar cor (2 clipes selecionados)'), onClick: () => colorMatchSelected() },
+      { label: t('Batidas da música / cortar no ritmo...'), onClick: () => beatsDialog() },
+      { label: t('Normalizar volume (LUFS)...'), onClick: () => normalizeDialog() },
       '-',
       { label: t('Nova sequência'), onClick: () => newSequence() },
       { label: t('Aninhar clipes selecionados'), onClick: () => nestSelection() },
@@ -190,6 +203,9 @@ const ACTION_FN = {
   toolSlide: () => setMode('slide'),
   freeze: () => freezeFrame(),
   history: () => openHistory(),
+  exportFrame: () => exportFrame(),
+  reverse: () => reverseClip(),
+  chapters: () => chaptersDialog(),
   toolForward: () => setMode('forward'),
   markIn: () => store.setRange('in'),
   markOut: () => store.setRange('out'),

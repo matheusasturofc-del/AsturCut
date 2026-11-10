@@ -155,6 +155,7 @@ function clipTools(c) {
   if (c.type === 'video' || c.type === 'audio') {
     list.push(tool('speed', 'stopwatch', 'Velocidade', () => openInspector('speed', t('Velocidade'))));
     list.push(tool('volume', 'volume', 'Volume', () => openInspector('audio', t('Volume'))));
+    list.push(tool('voice', 'mic', 'Efeitos de voz', () => openInspector('audio', t('Efeitos de voz'))));
   }
   if (c.type !== 'audio' && c.type !== 'effect' && c.type !== 'filter') list.push(tool('anim', 'wand', 'Animações', () => openInspector('anim', t('Animações'))));
   if (visual) {

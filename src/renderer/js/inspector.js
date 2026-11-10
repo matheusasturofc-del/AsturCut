@@ -20,6 +20,7 @@ import { defaultGrade, colorWheel, curvesEditor, importLut, toggleScopes } from 
 import { captionsPanel } from './captions.js';
 import { stabilize, trackMask, autoReframeDialog } from './analysis.js';
 import { switchSequence, renameSequence } from './sequences.js';
+import { VOICES } from './lib/voice.js';
 const tr = (s, v) => t(s, v);
 import { whiteBalanceFrom, applyColorToMedia, copyAttributes, pasteAttributesDialog, hasAttributes, gainDialog, speedDialog, toDb } from './editTools.js';
 
@@ -390,6 +391,21 @@ function audioTab(c) {
     slider('Fade out', c.fadeOut, { min: 0, max: Math.min(10, c.duration / 2), step: 0.1, unit: 's', def: 0, onInput: (v) => upd(c, { fadeOut: v }) }),
     c.type === 'video' ? el('div', { class: 'btn-row' }, el('button', { class: 'btn', onclick: () => store.detachAudio(c.id) }, 'Separar áudio')) : null,
   ));
+  if (c.type !== 'sequence') bodyEl.append(voiceSection(c));
+}
+
+// efeitos de voz (estilo CapCut)
+function voiceSection(c) {
+  const cur = c.voice?.id || '';
+  const set = (id) => { store.begin(); c.voice = id ? { id } : null; store.commit('voice'); };
+  const box = section(t('Efeitos de voz'));
+  const cats = [...new Set(VOICES.map((v) => v.cat))];
+  box.append(el('div', { class: 'voice-grid' }, el('button', { class: 'voice-chip' + (!cur ? ' on' : ''), onclick: () => set('') }, '∅ ' + t('Nenhum'))));
+  for (const cat of cats) {
+    box.append(el('div', { class: 'muted small voice-cat' }, t(cat)));
+    box.append(el('div', { class: 'voice-grid' }, VOICES.filter((v) => v.cat === cat).map((v) => el('button', { class: 'voice-chip' + (cur === v.id ? ' on' : ''), onclick: () => set(v.id) }, t(v.name)))));
+  }
+  return box;
 }
 
 function speedTab(c) {

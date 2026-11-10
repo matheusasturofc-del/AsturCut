@@ -39,6 +39,15 @@ export const ANIM_IN = [
 ];
 
 export const ANIM_LOOP = [
+  // animações que dependem do progresso do clipe (0..1): fp
+  { id: 'credits', name: 'Créditos subindo', fp: (p) => ({ dy: 0.85 - 1.7 * p }) },
+  { id: 'creditsDown', name: 'Rolar para baixo', fp: (p) => ({ dy: -0.85 + 1.7 * p }) },
+  { id: 'ticker', name: 'Letreiro (passa de lado)', fp: (p) => ({ dx: 1.1 - 2.2 * p }) },
+  { id: 'tickerR', name: 'Letreiro (da esquerda)', fp: (p) => ({ dx: -1.1 + 2.2 * p }) },
+  { id: 'slowZoomIn', name: 'Zoom lento contínuo', fp: (p) => ({ scale: 1 + 0.25 * p }) },
+  { id: 'slowZoomOut', name: 'Afastar lento contínuo', fp: (p) => ({ scale: 1.25 - 0.25 * p }) },
+  { id: 'panLR', name: 'Panorâmica →', fp: (p) => ({ scale: 1.2, dx: -0.08 + 0.16 * p }) },
+  { id: 'panRL', name: 'Panorâmica ←', fp: (p) => ({ scale: 1.2, dx: 0.08 - 0.16 * p }) },
   { id: 'pulse', name: 'Pulsar', f: (t) => ({ scale: 1 + 0.06 * Math.sin(t * Math.PI * 2) }) },
   { id: 'float', name: 'Flutuar', f: (t) => ({ dy: 0.02 * Math.sin(t * Math.PI) }) },
   { id: 'wiggle', name: 'Balançar', f: (t) => ({ rot: 6 * Math.sin(t * Math.PI * 2) }) },
@@ -89,7 +98,9 @@ export function clipAnimation(clip, lt) {
     if (rem < ad) combine(st, ANIM_IN_MAP[clip.animOut.id].f(Math.max(0, rem / ad)));
   }
   if (clip.animLoop && ANIM_LOOP_MAP[clip.animLoop.id]) {
-    combine(st, ANIM_LOOP_MAP[clip.animLoop.id].f(lt * (clip.animLoop.speed || 1)));
+    const def = ANIM_LOOP_MAP[clip.animLoop.id];
+    if (def.fp) combine(st, def.fp(Math.min(1, ((lt / Math.max(0.01, d)) * (clip.animLoop.speed || 1)) % 1.000001)));
+    else combine(st, def.f(lt * (clip.animLoop.speed || 1)));
   }
   return st;
 }

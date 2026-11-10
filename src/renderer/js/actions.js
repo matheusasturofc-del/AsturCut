@@ -73,7 +73,7 @@ export function addText(presetId = 'default', info = null) {
   const p = TEXT_PRESETS.find((x) => x.id === presetId) || TEXT_PRESETS[0];
   const text = { ...defaultText(), ...deepClone(p.t) };
   text.content = t(text.content);
-  return placeVisual({ type: 'text', name: t(p.name), text, transform: { x: p.x || 0, y: p.y || 0, scale: 1, rotation: 0, opacity: 1 } }, settings.get('textDuration'), info);
+  return placeVisual({ type: 'text', name: t(p.name), text, transform: { x: p.x || 0, y: p.y || 0, scale: 1, rotation: 0, opacity: 1 }, ...(p.loop ? { animLoop: { id: p.loop, speed: 1 } } : {}) }, p.dur || settings.get('textDuration'), info);
 }
 
 export function addSticker(emoji, info = null) {

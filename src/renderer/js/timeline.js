@@ -12,6 +12,7 @@ import { removeSilencesDialog } from './silence.js';
 import { openCaptionsDialog } from './captions.js';
 import { openRecorder } from './recorder.js';
 import { stabilize } from './analysis.js';
+import { editMarker, markerAt, reverseClip, colorMatchSelected, splitLayoutDialog, beatsDialog, normalizeDialog } from './extras.js';
 import { multicamDialog, openMulticamMonitor, isMulticamSeq } from './multicam.js';
 import { sequences, switchSequence, newSequence, renameSequence, duplicateSequence, deleteSequence, nestSelection, seqDuration, insertSequenceClip, seqData, angleTracks } from './sequences.js';
 import { freezeFrame, detectScenes, audioCrossfades, openHistory } from './protools.js';
@@ -195,6 +196,22 @@ function render() {
     ]), html: icon('plus', 14) }));
   rulerCanvas = el('canvas', { class: 'tl-ruler' });
   const rulerLane = el('div', { class: 'tl-ruler-lane', style: { width: W + 'px' } }, rulerCanvas);
+  rulerLane.addEventListener('dblclick', (e) => {
+    const r = rulerLane.getBoundingClientRect();
+    const mk = markerAt((e.clientX - r.left) / pps, 8 / pps);
+    if (mk) editMarker(mk);
+  });
+  rulerLane.addEventListener('contextmenu', (e) => {
+    const r = rulerLane.getBoundingClientRect();
+    const mk = markerAt((e.clientX - r.left) / pps, 8 / pps);
+    if (!mk) return;
+    e.preventDefault();
+    contextMenu(e.clientX, e.clientY, [
+      { label: 'Editar marcador...', onClick: () => editMarker(mk) },
+      { label: 'Excluir marcador', onClick: () => { store.begin(); store.p.markers = store.p.markers.filter((x) => x !== mk); store.commit('marker'); } },
+      { label: 'Excluir todos os marcadores', onClick: () => { store.begin(); store.p.markers = []; store.commit('marker'); } },
+    ]);
+  });
   rulerLane.addEventListener('pointerdown', (e) => {
     pause();
     const seek = (ev) => { const r = rulerLane.getBoundingClientRect(); store.setTime(Math.max(0, (ev.clientX - r.left) / pps)); };
@@ -459,6 +476,11 @@ export function clipMenu(x, y, c) {
     c.type === 'video' ? { label: 'Congelar quadro', shortcut: 'Shift+F', onClick: () => freezeFrame() } : null,
     c.type === 'video' ? { label: 'Detectar cenas e cortar...', onClick: () => detectScenes(c) } : null,
     c.type === 'video' ? { label: 'Estabilizar vídeo', onClick: () => stabilize(c) } : null,
+    c.type === 'video' ? { label: 'Inverter (de trás para frente)', shortcut: 'Ctrl+Alt+R', onClick: () => reverseClip(c) } : null,
+    multi && isVis ? { label: 'Igualar cor (do primeiro selecionado)', onClick: () => colorMatchSelected() } : null,
+    multi && isVis ? { label: 'Tela dividida...', onClick: () => splitLayoutDialog() } : null,
+    c.type === 'audio' ? { label: 'Batidas da música / cortar no ritmo...', onClick: () => beatsDialog() } : null,
+    hasAudio(c) ? { label: 'Normalizar volume...', onClick: () => normalizeDialog() } : null,
     hasAudio(c) ? { label: 'Crossfade de áudio nas emendas', onClick: () => audioCrossfades() } : null,
     { label: 'Rótulo', submenu: labelMenu() },
     linked ? { label: 'Desvincular áudio e vídeo', onClick: () => store.unlink() } : multi ? { label: 'Vincular clipes', onClick: () => store.link() } : null,

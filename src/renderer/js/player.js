@@ -2,7 +2,7 @@
 import { store, bus, ASPECTS } from './store.js';
 import { $, el, icon, fmtTime, clamp, dragHandler, dropdownFrom } from './util.js';
 import { renderFrame, activeAt, sourceTime, hasMedia } from './compositor.js';
-import { getPlayer, allPlayers, gcPlayers, audioCtx } from './media.js';
+import { getPlayer, allPlayers, gcPlayers, audioCtx, setPlayerVoice } from './media.js';
 import { flattenSeqClip, mediaClipsDeep } from './sequences.js';
 import { settings } from './settings.js';
 import { valueAt, setValue, transformAt, localTime, speedAt } from './keyframes.js';
@@ -174,6 +174,7 @@ export function syncMedia(t, playing) {
     if (!p) return;
     activeIds.add(c.id);
     routePlayer(p, c.trackId);
+    if ((p.voiceId || '') !== (c.voice?.id || '')) setPlayerVoice(p, c.voice?.id);
     const lt = t - c.start;
     const target = sourceTime(c, lt);
     const el = p.el;

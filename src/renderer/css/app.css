@@ -954,3 +954,14 @@ body.mobile .cp-row { grid-template-columns: 110px 1fr; }
 .mc-list { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow: auto; }
 .mc-item { display: flex; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 6px; background: rgba(255,255,255,.03); }
 .mc-item span:nth-child(2) { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lay-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.lay-btn { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 4px; background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 11px; cursor: pointer; }
+.lay-btn:hover { border-color: var(--accent); }
+.lay-ico { position: relative; width: 64px; height: 36px; background: #000; border-radius: 3px; overflow: hidden; }
+.lay-ico span { position: absolute; box-shadow: inset 0 0 0 1px #000; }
+@media (max-width: 600px) { .lay-grid { grid-template-columns: repeat(2, 1fr); } }
+.voice-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.voice-cat { margin: 8px 0 4px; }
+.voice-chip { padding: 6px 10px; border-radius: 16px; border: 1px solid var(--border); background: rgba(255,255,255,.04); color: var(--text); font-size: 12px; cursor: pointer; }
+.voice-chip:hover { border-color: var(--accent); }
+.voice-chip.on { background: var(--accent); color: #041014; border-color: var(--accent); font-weight: 600; }

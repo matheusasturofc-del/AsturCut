@@ -1,4 +1,5 @@
 // Importação de mídia, miniaturas, formas de onda, fontes e elementos de reprodução
+import { PITCH_URL, VOICE_MAP, buildVoice } from './lib/voice.js';
 import { store, bus } from './store.js';
 import { t } from './i18n.js';
 import { uid, toast } from './util.js';
@@ -309,6 +310,7 @@ export function getPlayer(clip, key = clip.id) {
     const ctx = audioCtx();
     const src = ctx.createMediaElementSource(el);
     p.gain = ctx.createGain();
+    p.src = src;
     src.connect(p.gain).connect(master);
   } catch (e) { console.warn('audio route', e); }
   el.addEventListener('seeked', () => { p.seeking = false; bus.emit('frame-ready'); });
@@ -323,6 +325,27 @@ export function releasePlayer(id) {
   pool.delete(id);
 }
 export function allPlayers() { return pool; }
+// efeitos de voz na prévia
+let pitchReady = null, pitchOk = false;
+function ensurePitch() {
+  if (!pitchReady) {
+    const ctx = audioCtx();
+    pitchReady = ctx.audioWorklet ? ctx.audioWorklet.addModule(PITCH_URL).then(() => { pitchOk = true; }).catch(() => {}) : Promise.resolve();
+  }
+  return pitchReady;
+}
+export function setPlayerVoice(p, id) {
+  id = id || '';
+  if (!p?.src || p.voiceId === id) return;
+  if (id && VOICE_MAP[id]?.pitch && !pitchOk) { if (!p.voiceWait) { p.voiceWait = true; ensurePitch().then(() => { p.voiceWait = false; }); } if (!pitchReady || !pitchOk) return; }
+  const ctx = audioCtx();
+  try { p.voiceChain?.stop(); } catch {}
+  p.voiceChain = null;
+  try { p.src.disconnect(); } catch {}
+  const ch = id ? buildVoice(ctx, id, pitchOk) : null;
+  if (ch) { p.src.connect(ch.input); ch.output.connect(p.gain); p.voiceChain = ch; } else p.src.connect(p.gain);
+  p.voiceId = id;
+}
 export function gcPlayers() {
   for (const id of [...pool.keys()]) { const root = id.split('>')[0]; if (!store.clip(root) && !(store.p.sequences || []).some((s) => s.id === root)) releasePlayer(id); }
 }

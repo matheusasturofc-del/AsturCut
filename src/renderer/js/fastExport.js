@@ -7,8 +7,9 @@ import { renderFrame } from './compositor.js';
 import { player, syncMedia } from './player.js';
 import { allPlayers, masterGain, mediaUrl, api } from './media.js';
 import { valueAt, hasKf, speedAt, srcOffset } from './keyframes.js';
-import { trackAudio, GATE_CODE } from './audiomix.js';
+import { trackAudio, GATE_URL } from './audiomix.js';
 import { mediaClipsDeep } from './sequences.js';
+import { PITCH_URL, buildVoice } from './lib/voice.js';
 
 const SR = 48000;
 const decoded = new Map(); // mediaId -> AudioBuffer | null
@@ -62,7 +63,9 @@ export async function renderAudioOffline(start, dur, onProgress, { sampleRate = 
   const len = Math.max(1, Math.ceil(dur * sampleRate));
   const ctx = new OfflineAudioContext(channels, len, sampleRate);
   let gateOk = false;
-  try { await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([GATE_CODE], { type: 'application/javascript' }))); gateOk = true; } catch {}
+  try { await ctx.audioWorklet.addModule(GATE_URL); gateOk = true; } catch {}
+  let pitchOk = false;
+  try { await ctx.audioWorklet.addModule(PITCH_URL); pitchOk = true; } catch {}
   const master = ctx.createGain();
   master.gain.value = store.p.masterVolume ?? 1;
   master.connect(ctx.destination);
@@ -89,7 +92,9 @@ export async function renderAudioOffline(start, dur, onProgress, { sampleRate = 
     const ramp = hasKf(c, 'speed');
     src.playbackRate.value = ramp ? speedAt(c, t0 - c.start) : spd;
     const g = ctx.createGain();
-    src.connect(g).connect(buses.get(tr.id).input);
+    const vc = c.voice?.id ? buildVoice(ctx, c.voice.id, pitchOk) : null;
+    if (vc) { src.connect(vc.input); vc.output.connect(g); } else src.connect(g);
+    g.connect(buses.get(tr.id).input);
     const when = t0 - start;
     const srcOff = (c.in || 0) + srcOffset(c, t0 - c.start);
     if (srcOff >= buf.duration) continue;
