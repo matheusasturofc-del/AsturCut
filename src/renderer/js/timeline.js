@@ -11,7 +11,7 @@ import { keyTimes } from './keyframes.js';
 import { removeSilencesDialog } from './silence.js';
 import { openCaptionsDialog } from './captions.js';
 import { openRecorder } from './recorder.js';
-import { stabilize } from './analysis.js';
+import { stabilize, trackObject } from './analysis.js';
 import { textEditDialog } from './textedit.js';
 import { closeAllGaps, ttsDialog, editMarker, markerAt, reverseClip, colorMatchSelected, splitLayoutDialog, beatsDialog, normalizeDialog } from './extras.js';
 import { multicamDialog, openMulticamMonitor, isMulticamSeq } from './multicam.js';
@@ -480,6 +480,7 @@ export function clipMenu(x, y, c) {
     c.type === 'video' ? { label: 'Congelar quadro', shortcut: 'Shift+F', onClick: () => freezeFrame() } : null,
     c.type === 'video' ? { label: 'Detectar cenas e cortar...', onClick: () => detectScenes(c) } : null,
     c.type === 'video' ? { label: 'Estabilizar vídeo', onClick: () => stabilize(c) } : null,
+    ['text', 'sticker', 'shape', 'image'].includes(c.type) ? { label: 'Seguir objeto no vídeo (rastrear)', onClick: () => trackObject(c) } : null,
     c.type === 'video' ? { label: 'Inverter (de trás para frente)', shortcut: 'Ctrl+Alt+R', onClick: () => reverseClip(c) } : null,
     multi && isVis ? { label: 'Igualar cor (do primeiro selecionado)', onClick: () => colorMatchSelected() } : null,
     multi && isVis ? { label: 'Tela dividida...', onClick: () => splitLayoutDialog() } : null,

@@ -18,7 +18,7 @@ import { hasKf, anyKf, valueAt, setValue, toggleAnim, toggleKey, keyAtCursor, ju
 import { colorBypass, defaultMask, MASK_SHAPES } from './compositor.js';
 import { defaultGrade, colorWheel, curvesEditor, importLut, toggleScopes } from './color.js';
 import { captionsPanel } from './captions.js';
-import { stabilize, trackMask, autoReframeDialog, maskPosAt } from './analysis.js';
+import { stabilize, trackMask, autoReframeDialog, maskPosAt, trackObject, videoUnder } from './analysis.js';
 import { switchSequence, renameSequence } from './sequences.js';
 import { ttsDialog, autoEnhance } from './extras.js';
 import { VOICES } from './lib/voice.js';
@@ -277,6 +277,13 @@ function basicTab(c) {
       el('button', { class: 'btn sm', onclick: () => updC(c, { transform: { y: 0.35 } }) }, 'Base'),
       el('button', { class: 'btn sm', onclick: () => updC(c, { transform: { x: 0, y: 0, scale: 1, rotation: 0 } }) }, 'Redefinir'))),
   ));
+  if (['text', 'sticker', 'shape', 'image', 'gen'].includes(c.type) && videoUnder(c)) {
+    bodyEl.append(section(tr('Seguir objeto'),
+      el('div', { class: 'muted small' }, tr('Coloque o item em cima de algo no vídeo (rosto, bola, carro...) e clique: ele passa a acompanhar o movimento.')),
+      el('div', { class: 'btn-row' },
+        el('button', { class: 'btn sm primary', onclick: () => trackObject(c) }, '◎ ' + tr('Seguir objeto no vídeo')),
+        hasKf(c, 'x') ? el('button', { class: 'btn sm', onclick: () => { store.begin(); delete c.kf.x; delete c.kf.y; store.commitr('kf'); } }, tr('Parar de seguir')) : null)));
+  }
   const kfs = kfSection(c);
   if (kfs) bodyEl.append(kfs);
   if (media) {

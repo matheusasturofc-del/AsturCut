@@ -15,7 +15,7 @@ import { openCaptionsDialog } from '../captions.js';
 import { removeSilencesDialog } from '../silence.js';
 import { setSpeed } from '../timeline.js';
 import { freezeFrame, detectScenes } from '../protools.js';
-import { stabilize, autoReframeDialog } from '../analysis.js';
+import { stabilize, autoReframeDialog, trackObject } from '../analysis.js';
 import { textEditDialog } from '../textedit.js';
 import { splitLayoutDialog, beatsDialog, normalizeDialog, closeAllGaps, exportFrame, autoEnhance } from '../extras.js';
 import { initMobileTimeline, fitZoom } from './mtimeline.js';
@@ -158,6 +158,7 @@ function clipTools(c) {
   const dup = tool('dup', 'duplicate', 'Duplicar', () => store.duplicate([c.id]));
   if (c.type === 'text' && c.autoCaption) list.push(tool('cap-style', 'captions', 'Estilo das legendas', () => openInspector('captions', t('Legendas'))));
   if (c.type === 'text') list.push(tool('edit-text', 'text', 'Editar', () => openInspector('text', t('Texto'))));
+  if (['text', 'sticker', 'shape', 'image'].includes(c.type) && store.track(c.trackId) && !store.track(c.trackId).main) list.push(tool('track-obj', 'compare', 'Seguir objeto', () => trackObject(c)));
   if (c.type === 'video' || c.type === 'audio') list.push(tool('auto-cap', 'captions', 'Legendas automáticas', () => openCaptionsDialog([c])));
   list.push(split);
   if (c.type === 'video' || c.type === 'audio') {

@@ -194,3 +194,80 @@ async function runReframe(vids, o) {
     toast(t('{n} clipe(s) reenquadrado(s) para {a}', { n: results.length, a: o.aspect }), 'success');
   } catch (e) { pm.close(); console.error(e); toast(t('Não foi possível reenquadrar: {m}', { m: String(e.message || e) }), 'error'); }
 }
+
+// ---------- rastrear objeto: texto/sticker/imagem segue algo que se move no vídeo ----------
+export function videoUnder(c, tt = store.time) {
+  const order = store.p.tracks.map((x) => x.id);
+  const ci = order.indexOf(c.trackId);
+  const cands = store.p.clips.filter((v) => v.type === 'video' && v !== c && tt >= v.start && tt < v.start + v.duration && order.indexOf(v.trackId) > ci);
+  cands.sort((a, b) => order.indexOf(a.trackId) - order.indexOf(b.trackId));
+  return cands[0] || store.p.clips.find((v) => v.type === 'video' && v !== c && tt >= v.start && tt < v.start + v.duration) || null;
+}
+function frameMap(v) {
+  const { width: W, height: H } = store.p.settings;
+  const m = store.media(v.mediaId);
+  const mw = m?.width || W, mh = m?.height || H;
+  const fit = v.fit || 'contain';
+  const sx = fit === 'fill' ? W / mw : fit === 'cover' ? Math.max(W / mw, H / mh) : Math.min(W / mw, H / mh);
+  const sy = fit === 'fill' ? H / mh : sx;
+  const tr = v.transform, k = tr.scale || 1;
+  const cw = mw * sx * k, ch = mh * sy * k;
+  const left = W / 2 + tr.x * W - cw / 2, top = H / 2 + tr.y * H - ch / 2;
+  return {
+    toMedia: (fx, fy) => ({ u: ((W / 2 + fx * W) - left) / cw, v: ((H / 2 + fy * H) - top) / ch }),
+    toFrame: (u, vv) => ({ x: (left + u * cw - W / 2) / W, y: (top + vv * ch - H / 2) / H }),
+  };
+}
+export async function trackObject(c = store.primarySelected()) {
+  if (!c || !['text', 'sticker', 'shape', 'image', 'gen'].includes(c.type)) { toast(t('Selecione um texto, sticker ou imagem e posicione sobre o objeto'), 'error', 4000); return; }
+  const lt0 = clamp(store.time - c.start, 0, c.duration);
+  const v = videoUnder(c, c.start + lt0);
+  if (!v) { toast(t('Não há vídeo embaixo deste item no cursor'), 'error'); return; }
+  const m = store.media(v.mediaId);
+  pause();
+  const pm = progressModal(t('Rastreando o objeto'));
+  try {
+    const vid = await openVideo(m);
+    const ar = (m.width || 16) / (m.height || 9), w = 320, h = Math.round(320 / ar);
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const map = frameMap(v);
+    const tr0 = c.transform;
+    const p0 = map.toMedia(tr0.x, tr0.y);
+    if (p0.u < 0 || p0.u > 1 || p0.v < 0 || p0.v > 1) throw new Error(t('o item está fora do vídeo'));
+    const half = 14;
+    const srcAt = (lt) => { const tl = c.start + lt; return (v.in || 0) + srcOffset(v, clamp(tl - v.start, 0, v.duration)); };
+    const pts = new Map([[+lt0.toFixed(3), { u: p0.u, v: p0.v }]]);
+    const step = 1 / 15;
+    const total = c.duration / step;
+    let doneN = 0;
+    for (const dir of [1, -1]) {
+      await seekTo(vid, srcAt(lt0));
+      let tpl = grayFrame(vid, w, h, cv), pos = { x: p0.u * w, y: p0.v * h };
+      for (let lt = lt0 + dir * step; lt >= 0 && lt <= c.duration && !pm.cancelled; lt += dir * step) {
+        const tl = c.start + lt;
+        if (tl < v.start || tl > v.start + v.duration) break;
+        await seekTo(vid, srcAt(lt));
+        const g = grayFrame(vid, w, h, cv);
+        const x0 = Math.round(pos.x - half), y0 = Math.round(pos.y - half);
+        const s = bestShift(tpl, g, w, h, 16, Math.max(0, x0), Math.max(0, y0), Math.min(w, x0 + half * 2), Math.min(h, y0 + half * 2), 1);
+        pos = { x: clamp(pos.x + s.dx, half, w - half), y: clamp(pos.y + s.dy, half, h - half) };
+        tpl = g;
+        pts.set(+lt.toFixed(3), { u: pos.x / w, v: pos.y / h });
+        doneN++;
+        pm.set(doneN / total, t('Rastreando... {p}%', { p: Math.round((doneN / total) * 100) }));
+      }
+    }
+    vid.removeAttribute('src'); vid.load();
+    pm.close();
+    if (pm.cancelled) return;
+    const sorted = [...pts.entries()].sort((a, b) => a[0] - b[0]);
+    // suaviza um pouco o caminho (média de 3)
+    const sm = sorted.map(([tt], i) => { const a = sorted[Math.max(0, i - 1)][1], b = sorted[i][1], d = sorted[Math.min(sorted.length - 1, i + 1)][1]; return [tt, { u: (a.u + b.u * 2 + d.u) / 4, v: (a.v + b.v * 2 + d.v) / 4 }]; });
+    store.batch('track-object', () => {
+      c.kf = { ...(c.kf || {}) };
+      c.kf.x = sm.map(([tt, p]) => ({ t: tt, v: +map.toFrame(p.u, p.v).x.toFixed(4), e: 'linear' }));
+      c.kf.y = sm.map(([tt, p]) => ({ t: tt, v: +map.toFrame(p.u, p.v).y.toFixed(4), e: 'linear' }));
+    });
+    toast(t('Pronto! O item agora segue o objeto ({n} pontos)', { n: sm.length }), 'success');
+  } catch (e) { pm.close(); console.error(e); toast(t('Não foi possível rastrear: {m}', { m: String(e.message || e) }), 'error'); }
+}
