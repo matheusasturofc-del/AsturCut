@@ -408,7 +408,7 @@ function buildMask(list, cx, cy, rot, sx, sy, size, S, W, H, lt, censor) {
     const kp = k.track ? maskPosAt(k, lt) : k;
     m.translate(kp.x * size.w, kp.y * size.h); m.rotate(((k.rot || 0) * Math.PI) / 180);
     const ex = (k.expand || 0) * S * 2;
-    const w = Math.max(1, k.w * size.w + ex), h = Math.max(1, k.h * size.h + ex);
+    const w = Math.max(1, (kp.w ?? k.w) * size.w + ex), h = Math.max(1, (kp.h ?? k.h) * size.h + ex);
     const scale = Math.max(0.01, Math.abs(sx));
     m.filter = k.feather > 0 ? `blur(${(k.feather * S / scale).toFixed(1)}px)` : 'none';
     m.globalAlpha = k.opacity ?? 1;

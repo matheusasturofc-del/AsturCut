@@ -36,8 +36,9 @@ export function stabAt(c, st) {
 }
 
 export function maskPosAt(mask, lt) {
-  if (!mask.track || mask.track.length < 2) return { x: mask.x, y: mask.y };
-  const r = interp(mask.track.map((p) => [p.t, p.x, p.y]), lt);
-  return { x: r[1], y: r[2] };
+  if (!mask.track || !mask.track.length) return mask;
+  if (mask.track.length < 2) { const p = mask.track[0]; return { x: p.x, y: p.y, w: p.w ?? mask.w, h: p.h ?? mask.h }; }
+  const r = interp(mask.track.map((p) => [p.t, p.x, p.y, p.w ?? mask.w, p.h ?? mask.h]), lt);
+  return { x: r[1], y: r[2], w: r[3], h: r[4] };
 }
 

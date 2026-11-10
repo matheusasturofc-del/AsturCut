@@ -18,7 +18,7 @@ import { hasKf, anyKf, valueAt, setValue, toggleAnim, toggleKey, keyAtCursor, ju
 import { colorBypass, defaultMask, MASK_SHAPES } from './compositor.js';
 import { defaultGrade, colorWheel, curvesEditor, importLut, toggleScopes } from './color.js';
 import { captionsPanel } from './captions.js';
-import { stabilize, trackMask, autoReframeDialog } from './analysis.js';
+import { stabilize, trackMask, autoReframeDialog, maskPosAt } from './analysis.js';
 import { switchSequence, renameSequence } from './sequences.js';
 import { ttsDialog, autoEnhance } from './extras.js';
 import { VOICES } from './lib/voice.js';
@@ -40,7 +40,7 @@ export function initInspector() {
   bus.on('time', () => {
     if (player.playing) return;
     const c = store.primarySelected();
-    if (!c || !anyKf(c)) return;
+    if (!c || !(anyKf(c) || (c.masks || []).some((m) => m.track))) return;
     clearTimeout(tTimer); tTimer = setTimeout(render, 60);
   });
   bus.on('project', render);
@@ -561,7 +561,27 @@ function masksSection(c) {
       el('button', { class: 'btn sm', title: t('Desfoca só uma parte (ex.: rosto ou placa). Use "Rastrear" para seguir o movimento.'), onclick: () => add('ellipse', { mode: 'blur', w: 0.28, h: 0.36, feather: 8, amount: 40 }) }, '◍ ' + t('Desfocar área')),
       el('button', { class: 'btn sm', title: t('Pixeliza só uma parte (censura)'), onclick: () => add('rect', { mode: 'pixel', w: 0.28, h: 0.36, feather: 0, amount: 30 }) }, '▦ ' + t('Pixelar área'))));
   list.forEach((m, i) => {
-    const set = (patch) => { Object.assign(m, patch); store.touch(); };
+    const lt = clamp(store.time - c.start, 0, c.duration);
+    const cur = m.track ? maskPosAt(m, lt) : m;
+    const kfAt = () => (m.track || []).find((p) => Math.abs(p.t - lt) < 0.02);
+    const set = (patch) => {
+      Object.assign(m, patch);
+      if (m.track && ['x', 'y', 'w', 'h'].some((k) => k in patch)) {
+        // máscara animada: grava/atualiza o ponto no cursor
+        let p = kfAt();
+        if (!p) { p = { t: +lt.toFixed(3), x: cur.x, y: cur.y, w: cur.w ?? m.w, h: cur.h ?? m.h }; m.track.push(p); m.track.sort((a, b) => a.t - b.t); }
+        Object.assign(p, patch);
+      }
+      store.touch();
+    };
+    const toggleKf = () => {
+      store.begin();
+      if (!m.track) m.track = [];
+      const p = kfAt();
+      if (p) { m.track = m.track.filter((x) => x !== p); if (!m.track.length) delete m.track; }
+      else { m.track.push({ t: +lt.toFixed(3), x: +cur.x.toFixed(4), y: +cur.y.toFixed(4), w: +(cur.w ?? m.w).toFixed(4), h: +(cur.h ?? m.h).toFixed(4) }); m.track.sort((a, b) => a.t - b.t); }
+      store.commit('mask-kf');
+    };
     box.append(el('div', { class: 'fx-item' },
       el('div', { class: 'fx-head' }, el('b', {}, `${t('Máscara')} ${i + 1} · ${t((MASK_SHAPES.find((x) => x[0] === m.shape) || MASK_SHAPES[0])[1])}`), el('div', { class: 'grow' }),
         el('button', { class: 'btn sm' + (m.invert ? ' on' : ''), onclick: () => { store.begin(); m.invert = !m.invert; store.commit('mask'); } }, t('Inverter')),
@@ -571,10 +591,13 @@ function masksSection(c) {
       segmented(t('Tipo:'), m.mode || 'alpha', [['alpha', t('Recorte')], ['blur', t('Desfoque')], ['pixel', t('Pixelado')]], (v) => { store.begin(); m.mode = v === 'alpha' ? undefined : v; if (v !== 'alpha' && m.amount == null) m.amount = 40; store.commit('mask'); }),
       select(t('Forma:'), m.shape, MASK_SHAPES.map(([v, n]) => [v, t(n)]), (v) => { store.begin(); m.shape = v; store.commit('mask'); }),
       m.mode ? slider(t('Intensidade'), m.amount ?? 40, { min: 2, max: 120, def: 40, onInput: (v) => set({ amount: v }) }) : null,
-      slider('Posição X', Math.round(m.x * 100), { min: -100, max: 100, def: 0, onInput: (v) => set({ x: v / 100 }) }),
-      slider('Posição Y', Math.round(m.y * 100), { min: -100, max: 100, def: 0, onInput: (v) => set({ y: v / 100 }) }),
-      slider('Largura', Math.round(m.w * 100), { min: 2, max: 200, unit: '%', def: 60, onInput: (v) => set({ w: v / 100 }) }),
-      slider('Altura', Math.round(m.h * 100), { min: 2, max: 200, unit: '%', def: 60, onInput: (v) => set({ h: v / 100 }) }),
+      el('div', { class: 'btn-row' },
+        el('button', { class: 'btn sm' + (kfAt() ? ' on' : ''), title: t('Anima a máscara: crie pontos em momentos diferentes e ela se move/muda de tamanho entre eles'), onclick: toggleKf }, '◆ ' + t(kfAt() ? 'Remover ponto no cursor' : 'Ponto de animação no cursor')),
+        m.track ? el('span', { class: 'muted small' }, t('{n} ponto(s)', { n: m.track.length })) : null),
+      slider('Posição X', Math.round(cur.x * 100), { min: -100, max: 100, def: 0, onInput: (v) => set({ x: v / 100 }) }),
+      slider('Posição Y', Math.round(cur.y * 100), { min: -100, max: 100, def: 0, onInput: (v) => set({ y: v / 100 }) }),
+      slider('Largura', Math.round((cur.w ?? m.w) * 100), { min: 2, max: 200, unit: '%', def: 60, onInput: (v) => set({ w: v / 100 }) }),
+      slider('Altura', Math.round((cur.h ?? m.h) * 100), { min: 2, max: 200, unit: '%', def: 60, onInput: (v) => set({ h: v / 100 }) }),
       slider('Rotação', m.rot || 0, { min: -180, max: 180, unit: '°', def: 0, onInput: (v) => set({ rot: v }) }),
       slider('Suavizar borda', m.feather, { min: 0, max: 200, def: 20, onInput: (v) => set({ feather: v }) }),
       slider('Expansão', m.expand || 0, { min: -200, max: 200, def: 0, onInput: (v) => set({ expand: v }) }),

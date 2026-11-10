@@ -4,7 +4,7 @@ import { $, el, icon, toast, promptDialog, dropdownFrom, confirmDialog } from '.
 import { settings, applyTheme } from './settings.js';
 import { initLayout, usePreset, togglePanel, LAYOUT_PRESETS } from './layout.js';
 import { initLibrary, openTab } from './library.js';
-import { initPlayer, togglePlay, step, pause, player } from './player.js';
+import { initPlayer, togglePlay, step, pause, player, shuttleJ, shuttleK, shuttleL } from './player.js';
 import { initTimeline, setMode, zoom, fit } from './timeline.js';
 import { initInspector } from './inspector.js';
 import { openExportDialog } from './exporter.js';
@@ -208,6 +208,9 @@ const ACTION_FN = {
   freeze: () => freezeFrame(),
   history: () => openHistory(),
   exportFrame: () => exportFrame(),
+  shuttleJ: () => shuttleJ(),
+  shuttleK: () => shuttleK(),
+  shuttleL: () => shuttleL(),
   reverse: () => reverseClip(),
   chapters: () => chaptersDialog(),
   toolForward: () => setMode('forward'),

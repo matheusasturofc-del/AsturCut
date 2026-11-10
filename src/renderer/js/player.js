@@ -1,6 +1,6 @@
 // Reprodutor: relógio de reprodução, sincronização de mídia, canvas e manipulação direta
 import { store, bus, ASPECTS } from './store.js';
-import { $, el, icon, fmtTime, clamp, dragHandler, dropdownFrom } from './util.js';
+import { $, el, icon, fmtTime, clamp, dragHandler, dropdownFrom, toast } from './util.js';
 import { renderFrame, activeAt, sourceTime, hasMedia } from './compositor.js';
 import { getPlayer, allPlayers, gcPlayers, audioCtx, setPlayerVoice } from './media.js';
 import { flattenSeqClip, mediaClipsDeep } from './sequences.js';
@@ -157,11 +157,27 @@ export function play(fromStart = false, until = null) {
 export function pause() {
   if (!player.playing) return;
   player.playing = false;
+  player.shuttle = 1; player.rateMul = 1;
   for (const p of allPlayers().values()) p.el.pause();
   updatePlayBtn();
   player.needsRender = true;
   bus.emit('play-state', false);
 }
+// J/K/L (como no Premiere): L acelera para frente, J para trás, K pausa
+function shuttleTo(v) {
+  player.shuttle = v;
+  player.rateMul = v > 0 ? v : 1;
+  if (!player.playing) {
+    audioCtx();
+    if (v > 0 && store.time >= store.duration() - 0.01) store.setTime(0);
+    rangeEnd = null; player.playing = true; lastTs = performance.now(); updatePlayBtn(); bus.emit('play-state', true);
+  }
+  for (const p of allPlayers().values()) if (v < 0 && !p.el.paused) p.el.pause();
+  if (Math.abs(v) !== 1) toast((v < 0 ? '◀◀ ' : '▶▶ ') + Math.abs(v) + 'x', 'info', 700);
+}
+export function shuttleL() { const s = player.playing ? player.shuttle || 1 : 0; shuttleTo(s <= 0 ? 1 : Math.min(8, s * 2)); }
+export function shuttleJ() { const s = player.playing ? player.shuttle || 1 : 0; shuttleTo(s >= 0 ? -1 : Math.max(-8, s * 2)); }
+export function shuttleK() { pause(); }
 export function togglePlay() { player.playing ? pause() : play(); }
 export function step(n) { pause(); store.setTime(store.time + n / store.p.settings.fps); }
 function updatePlayBtn() { const b = $('#btn-play'); if (b) b.innerHTML = icon(player.playing ? 'pause' : 'play', 18); }
@@ -228,7 +244,15 @@ function loop(ts) {
   if (player.playing) {
     const dt = (ts - lastTs) / 1000;
     lastTs = ts;
-    let t = store.time + Math.min(dt, 0.1);
+    const sh = player.shuttle || 1;
+    let t = store.time + Math.min(dt, 0.1) * sh;
+    if (sh < 0) {
+      // J: tocando de trás para frente (quadro a quadro, sem som)
+      if (t <= 0) { store.setTime(0); pause(); return; }
+      store.time = t; bus.emit('time', t); player.needsRender = true;
+      syncMedia(t, false); draw();
+      return;
+    }
     const end = rangeEnd ?? store.duration();
     if (t >= end) {
       if (settings.get('loopPlayback') && rangeEnd == null) { t = 0; for (const p of allPlayers().values()) p.el.pause(); }
