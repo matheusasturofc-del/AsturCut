@@ -418,3 +418,45 @@ export function colorMatchSelected() {
 }
 
 void settings; void promptDialog;
+
+// ---------- texto para fala (vozes do sistema) ----------
+export async function ttsDialog(fromClip = null) {
+  if (!isDesktop || !api.ttsSpeak) { toast(t('Texto para fala funciona no aplicativo para PC'), 'error'); return; }
+  const src = fromClip || store.selectedClips().find((c) => c.type === 'text');
+  const ta = el('textarea', { class: 'input', rows: 5, style: { width: '100%' }, placeholder: t('Digite o texto que será falado...') }, src?.text?.content || '');
+  const sel = el('select', { class: 'select' }, el('option', { value: '' }, t('Carregando vozes...')));
+  const note = el('div', { class: 'muted small' });
+  let rate = 0;
+  const rateEl = el('input', { type: 'range', class: 'slider', min: -5, max: 5, step: 1, value: 0, oninput: () => { rate = +rateEl.value; } });
+  modal({
+    title: t('Texto para fala'), width: 500,
+    body: el('div', { class: 'dlg' },
+      el('div', { class: 'muted small' }, t('Transforma texto em narração usando as vozes instaladas no computador.')),
+      ta, el('b', {}, t('Voz')), sel, el('b', {}, t('Velocidade da fala')), rateEl, note),
+    actions: [{ label: t('Cancelar') }, { label: t('Gerar narração'), primary: true, onClick: () => { const txt = ta.value.trim(); if (!txt) { toast(t('Digite um texto'), 'error'); return false; } runTts(txt, sel.value, rate, src); } }],
+  });
+  const voices = await api.ttsVoices().catch(() => []);
+  sel.innerHTML = '';
+  if (!voices.length) {
+    sel.append(el('option', { value: '' }, t('Voz padrão do sistema')));
+    note.textContent = api.platform === 'linux' || /Linux/.test(navigator.userAgent) ? t('Nenhuma voz encontrada. No Ubuntu/Zorin instale com: sudo apt install espeak-ng') : t('Nenhuma voz encontrada no sistema.');
+    return;
+  }
+  const lang = (document.documentElement.lang || 'pt').slice(0, 2);
+  voices.sort((a, b) => (b.lang || '').toLowerCase().startsWith(lang) - (a.lang || '').toLowerCase().startsWith(lang));
+  for (const v of voices) sel.append(el('option', { value: v.id }, `${v.name}${v.lang ? ' (' + v.lang + ')' : ''}${v.gender ? ' · ' + v.gender : ''}`));
+}
+async function runTts(text, voice, rate, src) {
+  const tst = toast(t('Gerando a narração...'), 'info', 60000);
+  try {
+    const out = await api.ttsSpeak({ text, voice, rate });
+    const [m] = await importPaths([out]);
+    if (!m) throw new Error('import');
+    m.name = t('Narração') + ' - ' + text.slice(0, 24).replace(/\s+/g, ' ') + '.wav';
+    const at = src ? src.start : store.time;
+    store.addMediaClip(m, { at });
+    bus.emit('media');
+    toast(t('Narração adicionada'), 'success');
+  } catch (e) { console.error(e); toast(t('Não foi possível gerar a fala: {m}', { m: String(e.message || e).slice(0, 140) }), 'error', 5000); }
+  finally { tst.remove(); }
+}

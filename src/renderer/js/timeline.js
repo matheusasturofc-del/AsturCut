@@ -12,7 +12,7 @@ import { removeSilencesDialog } from './silence.js';
 import { openCaptionsDialog } from './captions.js';
 import { openRecorder } from './recorder.js';
 import { stabilize } from './analysis.js';
-import { editMarker, markerAt, reverseClip, colorMatchSelected, splitLayoutDialog, beatsDialog, normalizeDialog } from './extras.js';
+import { ttsDialog, editMarker, markerAt, reverseClip, colorMatchSelected, splitLayoutDialog, beatsDialog, normalizeDialog } from './extras.js';
 import { multicamDialog, openMulticamMonitor, isMulticamSeq } from './multicam.js';
 import { sequences, switchSequence, newSequence, renameSequence, duplicateSequence, deleteSequence, nestSelection, seqDuration, insertSequenceClip, seqData, angleTracks } from './sequences.js';
 import { freezeFrame, detectScenes, audioCrossfades, openHistory } from './protools.js';
@@ -480,6 +480,7 @@ export function clipMenu(x, y, c) {
     multi && isVis ? { label: 'Igualar cor (do primeiro selecionado)', onClick: () => colorMatchSelected() } : null,
     multi && isVis ? { label: 'Tela dividida...', onClick: () => splitLayoutDialog() } : null,
     c.type === 'audio' ? { label: 'Batidas da música / cortar no ritmo...', onClick: () => beatsDialog() } : null,
+    c.type === 'text' ? { label: 'Converter texto em fala...', onClick: () => ttsDialog(c) } : null,
     hasAudio(c) ? { label: 'Normalizar volume...', onClick: () => normalizeDialog() } : null,
     hasAudio(c) ? { label: 'Crossfade de áudio nas emendas', onClick: () => audioCrossfades() } : null,
     { label: 'Rótulo', submenu: labelMenu() },

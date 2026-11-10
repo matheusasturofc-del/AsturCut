@@ -66,6 +66,8 @@ deb:
   artifactName: AsturCut-${version}-amd64.${ext}
   packageCategory: video
   priority: optional
+  recommends:
+    - espeak-ng
 appImage:
   artifactName: AsturCut-${version}-x86_64.${ext}
 mac:

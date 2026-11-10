@@ -553,6 +553,66 @@ ipcMain.handle('file:open-text', async (_e, { exts }) => {
   return { name: path.basename(r.filePaths[0]), text: await fs.promises.readFile(r.filePaths[0], 'utf8') };
 });
 
+// ---------- Texto para fala (vozes do sistema: Windows SAPI ou espeak-ng no Linux) ----------
+const psQuote = (x) => "'" + String(x).replace(/'/g, "''") + "'";
+function runPs(script) {
+  return new Promise((resolve, reject) => {
+    const enc = Buffer.from(script, 'utf16le').toString('base64');
+    const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', enc], { windowsHide: true });
+    let out = '', err = '';
+    proc.stdout.on('data', (d) => { out += d.toString(); });
+    proc.stderr.on('data', (d) => { err += d.toString(); });
+    proc.on('error', reject);
+    proc.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(err.slice(-400) || 'powershell ' + code))));
+  });
+}
+function whichCmd(names) {
+  return new Promise((resolve) => {
+    const tryOne = (i) => {
+      if (i >= names.length) return resolve(null);
+      const p = spawn(names[i], ['--version'], { windowsHide: true });
+      p.on('error', () => tryOne(i + 1));
+      p.on('close', (code) => (code === 0 ? resolve(names[i]) : tryOne(i + 1)));
+    };
+    tryOne(0);
+  });
+}
+ipcMain.handle('tts:voices', async () => {
+  try {
+    if (process.platform === 'win32') {
+      const out = await runPs("Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.GetInstalledVoices() | Where-Object { $_.Enabled } | ForEach-Object { $_.VoiceInfo.Name + '|' + $_.VoiceInfo.Culture.Name + '|' + $_.VoiceInfo.Gender }");
+      return out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => { const [name, lang, gender] = l.split('|'); return { id: name, name, lang, gender }; });
+    }
+    const cmd = await whichCmd(['espeak-ng', 'espeak']);
+    if (!cmd) return [];
+    return [['pt-br', 'Português (Brasil)'], ['pt', 'Português'], ['en-us', 'English (US)'], ['en', 'English (UK)'], ['es', 'Español'], ['es-419', 'Español (Latinoamérica)']].map(([id, name]) => ({ id: cmd + ':' + id, name, lang: id, gender: '' }));
+  } catch { return []; }
+});
+ipcMain.handle('tts:speak', async (_e, { text, voice, rate = 0 }) => {
+  const dir = path.join(app.getPath('userData'), 'tts');
+  await fs.promises.mkdir(dir, { recursive: true });
+  const stamp = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+  const inTxt = path.join(os.tmpdir(), `asturcut-tts-${stamp}.txt`);
+  const out = path.join(dir, `fala-${stamp}.wav`);
+  await fs.promises.writeFile(inTxt, String(text), 'utf8');
+  try {
+    if (process.platform === 'win32') {
+      const r = Math.max(-10, Math.min(10, Math.round(rate)));
+      await runPs(`Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; ${voice ? `try { $s.SelectVoice(${psQuote(voice)}) } catch {}` : ''} $s.Rate = ${r}; $s.SetOutputToWaveFile(${psQuote(out)}); $t = [IO.File]::ReadAllText(${psQuote(inTxt)}, [Text.Encoding]::UTF8); $s.Speak($t); $s.Dispose()`);
+    } else {
+      const [cmd, lang] = String(voice || 'espeak-ng:pt-br').split(':');
+      const bin = (await whichCmd([cmd, 'espeak-ng', 'espeak']));
+      if (!bin) throw new Error('espeak-ng');
+      await new Promise((resolve, reject) => {
+        const p = spawn(bin, ['-v', lang || 'pt-br', '-s', String(Math.round(170 + rate * 12)), '-w', out, '-f', inTxt], { windowsHide: true });
+        p.on('error', reject);
+        p.on('close', (code) => (code === 0 ? resolve() : reject(new Error('espeak ' + code))));
+      });
+    }
+  } finally { fs.promises.unlink(inTxt).catch(() => {}); }
+  return out;
+});
+
 // ---------- Coletar arquivos: copia toda a mídia do projeto para uma pasta ----------
 ipcMain.handle('project:collect', async (e, { name, files }) => {
   const r = await dialog.showOpenDialog(win, { title: tr('collectTitle') || 'Coletar arquivos', properties: ['openDirectory', 'createDirectory'] });

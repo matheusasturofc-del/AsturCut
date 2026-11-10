@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('astur', {
   openText: (o) => ipcRenderer.invoke('file:open-text', o),
   reverseMedia: (o) => ipcRenderer.invoke('media:reverse', o),
   collectFiles: (o) => ipcRenderer.invoke('project:collect', o),
+  ttsVoices: () => ipcRenderer.invoke('tts:voices'),
+  ttsSpeak: (o) => ipcRenderer.invoke('tts:speak', o),
   recSources: () => ipcRenderer.invoke('rec:sources'),
   recSelect: (o) => ipcRenderer.invoke('rec:select', o),
   recStarted: (o) => ipcRenderer.invoke('rec:started', o),

@@ -13,13 +13,14 @@ import { setSpeed } from './timeline.js';
 import { setAspect } from './player.js';
 import { openTab } from './library.js';
 import { player, startPick } from './player.js';
-import { DEFAULT_CHROMA, DEFAULT_CUTOUT, cutoutState, ensureSegmenter, keyBypass } from './keying.js';
+import { DEFAULT_CHROMA, DEFAULT_CUTOUT, cutoutState, ensureSegmenter, keyBypass, HSL_BANDS } from './keying.js';
 import { hasKf, anyKf, valueAt, setValue, toggleAnim, toggleKey, keyAtCursor, jumpKey, localTime, EASINGS, setEaseAtCursor, easeAtCursor } from './keyframes.js';
 import { colorBypass, defaultMask, MASK_SHAPES } from './compositor.js';
 import { defaultGrade, colorWheel, curvesEditor, importLut, toggleScopes } from './color.js';
 import { captionsPanel } from './captions.js';
 import { stabilize, trackMask, autoReframeDialog } from './analysis.js';
 import { switchSequence, renameSequence } from './sequences.js';
+import { ttsDialog } from './extras.js';
 import { VOICES } from './lib/voice.js';
 const tr = (s, v) => t(s, v);
 import { whiteBalanceFrom, applyColorToMedia, copyAttributes, pasteAttributesDialog, hasAttributes, gainDialog, speedDialog, toDb } from './editTools.js';
@@ -346,6 +347,7 @@ function textTab(c) {
   fontSel.style.fontFamily = `"${tx.font}"`;
   fontSel.addEventListener('change', () => updC(c, { text: { font: fontSel.value } }));
   bodyEl.append(section(null, ta,
+    isDesktop && api?.ttsSpeak ? el('div', { class: 'btn-row' }, el('button', { class: 'btn sm', title: t('Gera uma narração falando este texto'), onclick: () => ttsDialog(c), html: icon('mic', 13) + '<span>' + t('Texto para fala') + '</span>' })) : null,
     row('Fonte:', fontSel, el('button', { class: 'icon-btn xs', title: 'Mais fontes', onclick: () => openTab('fonts'), html: icon('font', 13) })),
     slider('Tamanho', tx.size, { min: 8, max: 400, def: 96, onInput: (v) => upd(c, { text: { size: v } }) }),
     row('Estilo:', el('div', { class: 'segmented' },
@@ -484,6 +486,26 @@ function adjustTab(c) {
 }
 
 // ---------- Cor (estilo Lumetri) ----------
+// HSL: ajusta matiz/saturação/luminância de uma cor específica (como o HSL do CapCut e o HSL Secundário do Lumetri)
+let hslBand = 'red';
+function hslSection(c, g) {
+  const v = (g.hsl && g.hsl[hslBand]) || { h: 0, s: 0, l: 0 };
+  const set = (k, val) => { g.hsl = { ...(g.hsl || {}) }; g.hsl[hslBand] = { h: 0, s: 0, l: 0, ...(g.hsl[hslBand] || {}), [k]: val }; store.touch(); };
+  const dots = el('div', { class: 'hsl-dots' }, HSL_BANDS.map(([id, name, col]) => {
+    const on = (g.hsl && g.hsl[id] && (g.hsl[id].h || g.hsl[id].s || g.hsl[id].l));
+    return el('button', { class: 'hsl-dot' + (id === hslBand ? ' sel' : '') + (on ? ' mod' : ''), title: t(name), style: { background: col }, onclick: () => { hslBand = id; render(); } });
+  }));
+  return section('HSL',
+    el('div', { class: 'muted small' }, t('Escolha uma cor e mude só ela (ex.: deixar o céu mais azul ou a pele mais natural).')),
+    dots,
+    slider(t('Matiz'), v.h || 0, { min: -100, max: 100, def: 0, onInput: (x) => set('h', x) }),
+    slider(t('Saturação'), v.s || 0, { min: -100, max: 100, def: 0, onInput: (x) => set('s', x) }),
+    slider(t('Luminância'), v.l || 0, { min: -100, max: 100, def: 0, onInput: (x) => set('l', x) }),
+    el('div', { class: 'btn-row' },
+      el('button', { class: 'btn sm', onclick: () => { store.begin(); if (g.hsl) delete g.hsl[hslBand]; store.commit('hsl'); } }, t('Zerar esta cor')),
+      el('button', { class: 'btn sm', onclick: () => { store.begin(); delete g.hsl; store.commit('hsl'); } }, t('Zerar todas'))));
+}
+
 function colorTab(c) {
   if (!c.grade) c.grade = defaultGrade();
   const g = c.grade;
@@ -498,6 +520,7 @@ function colorTab(c) {
     el('div', { class: 'muted small' }, t('Arraste o ponto para tingir; a barra embaixo clareia ou escurece. Toque duplo zera a roda.'))));
   bodyEl.append(section(t('Curvas'), curvesEditor(g.curves, ch)));
   const luts = Object.entries(store.p.luts || {});
+  if (c.type === 'video' || c.type === 'image') bodyEl.append(hslSection(c, g));
   bodyEl.append(section('LUT',
     select('LUT:', g.lut || '', [['', t('Nenhuma')], ...luts.map(([id, l]) => [id, l.name])], (v) => updC(c, { grade: { lut: v || null } })),
     g.lut ? slider('Intensidade', Math.round((g.lutMix ?? 1) * 100), { min: 0, max: 100, unit: '%', def: 100, onInput: (v) => upd(c, { grade: { lutMix: v / 100 } }) }) : null,

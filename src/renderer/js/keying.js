@@ -8,7 +8,9 @@ export const keyBypass = new Set(); // clipes sem recorte temporariamente (conta
 export const DEFAULT_CHROMA = { on: false, color: '#00ff00', similarity: 0.4, smoothness: 0.08, spill: 0.1 };
 export const DEFAULT_CUTOUT = { on: false, edge: 0.5, feather: 0.15 };
 
-export const needsKeying = (c) => !!((c.chroma && c.chroma.on) || (c.cutout && c.cutout.on) || (c.grade && c.grade.lut)) && (c.type === 'video' || c.type === 'image');
+export const HSL_BANDS = [['red', 'Vermelho', '#ff3b30', 0], ['orange', 'Laranja', '#ff9500', 30], ['yellow', 'Amarelo', '#ffd60a', 60], ['green', 'Verde', '#34c759', 120], ['aqua', 'Ciano', '#32d4de', 180], ['blue', 'Azul', '#0a84ff', 225], ['purple', 'Roxo', '#9b5de5', 275], ['magenta', 'Magenta', '#ff2d95', 320]];
+export const hasHsl = (g) => !!(g && g.hsl && Object.values(g.hsl).some((v) => v && (v.h || v.s || v.l)));
+export const needsKeying = (c) => !!((c.chroma && c.chroma.on) || (c.cutout && c.cutout.on) || (c.grade && (c.grade.lut || hasHsl(c.grade)))) && (c.type === 'video' || c.type === 'image');
 
 // ---------- WebGL ----------
 let gl = null, glCanvas = null, prog = null, texSrc = null, texMask = null, uni = {};
@@ -24,6 +26,32 @@ uniform int useChroma; uniform int useMask;
 uniform vec3 key; uniform float similarity; uniform float smoothness; uniform float spill;
 uniform float edge; uniform float feather;
 uniform sampler2D lut; uniform int useLut; uniform float lutSize; uniform float lutMix;
+uniform int useHsl; uniform vec3 hslAdj[8]; uniform float hslCenter[8];
+vec3 rgb2hsv(vec3 c) { vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0); vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g)); vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r)); float d = q.x - min(q.w, q.y); float e = 1.0e-10; return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x); }
+vec3 hsv2rgb(vec3 c) { vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0); vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www); return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y); }
+vec3 applyHsl(vec3 rgb) {
+  vec3 h = rgb2hsv(rgb);
+  float gate = smoothstep(0.04, 0.18, h.y);
+  // interpolação entre as duas cores vizinhas (exata no centro de cada cor)
+  vec3 adj = hslAdj[7]; vec3 nxt = hslAdj[0];
+  float c0 = hslCenter[7] - 1.0, c1 = hslCenter[0];
+  for (int i = 0; i < 8; i++) {
+    float a0 = i == 0 ? hslCenter[7] - 1.0 : hslCenter[i - 1];
+    float a1 = hslCenter[i];
+    if (h.x >= a0 && h.x < a1) { c0 = a0; c1 = a1; adj = i == 0 ? hslAdj[7] : hslAdj[i - 1]; nxt = hslAdj[i]; }
+  }
+  if (h.x >= hslCenter[7]) { c0 = hslCenter[7]; c1 = hslCenter[0] + 1.0; adj = hslAdj[7]; nxt = hslAdj[0]; }
+  float tt = clamp((h.x - c0) / max(1e-4, c1 - c0), 0.0, 1.0);
+  tt = tt * tt * (3.0 - 2.0 * tt);
+  vec3 dv = mix(adj, nxt, tt);
+  float dh = dv.x, ds = dv.y, dl = dv.z;
+  h.x = fract(h.x + dh * gate * 0.083);
+  vec3 c = hsv2rgb(h);
+  float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = clamp(mix(vec3(luma), c, 1.0 + ds * gate), 0.0, 1.0);
+  c = clamp(c * (1.0 + dl * gate * 0.6), 0.0, 1.0);
+  return c;
+}
 vec3 lutLookup(vec3 c) {
   float n = lutSize;
   vec3 s = clamp(c, 0.0, 1.0) * (n - 1.0);
@@ -45,6 +73,7 @@ void main() {
     float lum = clamp(dot(rgb, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
     rgb = mix(vec3(lum), rgb, sp);
   }
+  if (useHsl == 1) rgb = applyHsl(rgb);
   if (useLut == 1) rgb = mix(rgb, lutLookup(rgb), lutMix);
   if (useMask == 1) {
     float m = texture(mask, uv).r;
@@ -70,7 +99,8 @@ function initGL() {
   const loc = gl.getAttribLocation(prog, 'p');
   gl.enableVertexAttribArray(loc);
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-  for (const n of ['src', 'mask', 'useChroma', 'useMask', 'key', 'similarity', 'smoothness', 'spill', 'edge', 'feather', 'lut', 'useLut', 'lutSize', 'lutMix']) uni[n] = gl.getUniformLocation(prog, n);
+  for (const n of ['src', 'mask', 'useChroma', 'useMask', 'key', 'similarity', 'smoothness', 'spill', 'edge', 'feather', 'lut', 'useLut', 'lutSize', 'lutMix', 'useHsl']) uni[n] = gl.getUniformLocation(prog, n);
+  uni.hslAdj = gl.getUniformLocation(prog, 'hslAdj'); uni.hslCenter = gl.getUniformLocation(prog, 'hslCenter');
   const mk = (unit) => { const tx = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tx); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return tx; };
   texSrc = mk(0); texMask = mk(1);
   gl.uniform1i(uni.src, 0); gl.uniform1i(uni.mask, 1); gl.uniform1i(uni.lut, 2);
@@ -162,6 +192,13 @@ export function keyFrame(clip, src, mw, mh) {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, mask.w, mask.h, 0, gl.RED, gl.UNSIGNED_BYTE, mask.data);
     gl.uniform1f(uni.edge, cu.edge);
     gl.uniform1f(uni.feather, Math.max(0.01, cu.feather));
+  }
+  const hs = hasHsl(clip.grade);
+  gl.uniform1i(uni.useHsl, hs ? 1 : 0);
+  if (hs) {
+    const adj = new Float32Array(24), cen = new Float32Array(8);
+    HSL_BANDS.forEach(([id, , , hue], i) => { const v = clip.grade.hsl[id] || {}; adj[i * 3] = (v.h || 0) / 100; adj[i * 3 + 1] = (v.s || 0) / 100; adj[i * 3 + 2] = (v.l || 0) / 100; cen[i] = hue / 360; });
+    gl.uniform3fv(uni.hslAdj, adj); gl.uniform1fv(uni.hslCenter, cen);
   }
   const lid = clip.grade && clip.grade.lut;
   const L = lid ? lutData(lid) : null;
