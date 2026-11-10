@@ -63,9 +63,16 @@ Para atualizar, é só abrir o instalador novo. Ele instala por cima e mantém s
 1. Mude a versão em `package.json` (por exemplo, `1.3.0`), faça o commit e envie.
 2. No GitHub, abra **Actions → Gerar instalador → Run workflow**, deixe marcado **"Publicar uma Release"** e clique em **Run workflow**.
 
-Em poucos minutos sai a **Release** `v1.6.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.6.0` também funciona.
+Em poucos minutos sai a **Release** `v1.7.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.7.0` também funciona.
 
 ## Recursos
+
+**Novidades da 1.7**
+- **Editar pelo texto** (como no Premiere): a fala vira texto; apague palavras e o vídeo é cortado junto, marque vícios de linguagem (é, ãh, tipo) e corte pausas longas
+- **J / K / L**: tocar para trás e para frente em 2×, 4×, 8× (atalhos clássicos de edição)
+- **Animar máscaras** com pontos no tempo (posição e tamanho)
+- **Exportar XML** para abrir a edição no Premiere ou no DaVinci Resolve
+- Novos modelos: contagem regressiva, sem sinal → voltamos, notícia urgente, créditos finais, antes e depois
 
 **Novidades da 1.6**
 - **Efeitos de voz** (esquilo, robô, monstro, eco, catedral, telefone, megafone...) e **Melhorar voz** (voz limpa, locutor, podcast)

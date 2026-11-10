@@ -3,7 +3,8 @@ import { store, bus } from './store.js';
 import { $, el, icon, contextMenu, fmtShort } from './util.js';
 import { settings } from './settings.js';
 import { importViaDialog, addBackground, drawBackground, isDesktop, isMobile, canRecordScreen, api } from './media.js';
-import { addMedia, addText, addShape, addSticker, applyEffect, addAudio } from './actions.js';
+import { addMedia, addText, addShape, addSticker, applyEffect, addAudio, addStock, addNoSignal } from './actions.js';
+import { splitLayoutDialog } from './extras.js';
 import { openNewProjectDialog } from './newProject.js';
 import { newProject, openProject, getRecent, removeRecent, getRecovery, recover, clearRecovery } from './projects.js';
 import { openCustomize } from './customize.js';
@@ -37,7 +38,7 @@ bus.on('recent', () => { if (isHomeVisible()) render(); });
 
 // ---------- Modelos prontos ----------
 const at = (time) => store.setTime(time);
-const TEMPLATES = [
+export const TEMPLATES = [
   {
     id: 'intro', name: 'Intro animada', desc: 'Título com gradiente, animação e efeito sonoro', aspect: '16:9',
     preview: (x, W, H) => { drawBackground(x, { kind: 'grad', colors: ['#1ccfdc', '#5b2bff'] }, W, H); txt(x, t('SEU TÍTULO'), W / 2, H * 0.47, `${H * 0.2}px "Bebas Neue"`, '#fff'); txt(x, t('Seu subtítulo aqui'), W / 2, H * 0.64, `500 ${H * 0.07}px Montserrat`, 'rgba(255,255,255,.85)'); sparkles(x, W, H); },
@@ -139,12 +140,86 @@ const TEMPLATES = [
       if (mus) store.updateClip(mus.id, { duration: 6, fadeIn: 1, fadeOut: 1.5 });
     },
   },
+  {
+    id: 'countdown', name: 'Contagem regressiva', desc: 'Contagem de filme 10→1 com bipes e título', aspect: '16:9',
+    preview: (x, W, H) => { x.fillStyle = '#1a1a1a'; x.fillRect(0, 0, W, H); x.strokeStyle = '#ddd'; x.lineWidth = 3; x.beginPath(); x.arc(W / 2, H / 2, H * 0.32, 0, Math.PI * 2); x.stroke(); x.beginPath(); x.moveTo(0, H / 2); x.lineTo(W, H / 2); x.moveTo(W / 2, 0); x.lineTo(W / 2, H); x.stroke(); txt(x, '3', W / 2, H / 2, `700 ${H * 0.4}px "Bebas Neue"`, '#fff'); },
+    async build() {
+      at(0); await addStock('countdown10');
+      at(store.duration());
+      const bg = addMedia(await addBackground('grad:#0f0c29:#302b63'));
+      store.updateClip(bg.id, { duration: 4 });
+      const ti = addText('title');
+      store.updateClip(ti.id, { text: { content: t('COMEÇA AGORA!') }, duration: 4, animIn: { id: 'pop', dur: 0.6 } });
+    },
+  },
+  {
+    id: 'nosignal', name: 'Sem sinal → Voltamos', desc: 'Chuvisco de TV com chiado e título com glitch', aspect: '16:9',
+    preview: (x, W, H) => { const d = x.createImageData(W, H); for (let i = 0; i < d.data.length; i += 4) { const v = Math.random() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } x.putImageData(d, 0, 0); x.fillStyle = 'rgba(0,0,0,.6)'; x.fillRect(0, H * 0.4, W, H * 0.2); txt(x, t('VOLTAMOS!'), W / 2, H / 2, `700 ${H * 0.13}px "Bebas Neue"`, '#fff'); },
+    async build() {
+      at(0); await addStock('tvstatic');
+      at(store.duration());
+      const bg = addMedia(await addBackground('grad:#141e30:#243b55'));
+      store.updateClip(bg.id, { duration: 4 });
+      const ti = addText('title');
+      store.updateClip(ti.id, { text: { content: t('VOLTAMOS!') }, duration: 4, animIn: { id: 'pop', dur: 0.5 }, effects: [{ id: 'glitch', intensity: 0.5 }] });
+    },
+  },
+  {
+    id: 'news', name: 'Notícia urgente', desc: 'Título de plantão e letreiro de notícias passando', aspect: '16:9',
+    preview: (x, W, H) => { drawBackground(x, { kind: 'grad', colors: ['#1d2b64', '#0b1026'] }, W, H); x.fillStyle = '#c8102e'; x.fillRect(W * 0.08, H * 0.3, W * 0.42, H * 0.14); txt(x, t('URGENTE'), W * 0.29, H * 0.37, `700 ${H * 0.09}px "Bebas Neue"`, '#fff'); x.fillStyle = '#c8102e'; x.fillRect(0, H * 0.84, W, H * 0.1); txt(x, t('ÚLTIMAS NOTÍCIAS'), W * 0.5, H * 0.89, `700 ${H * 0.05}px "Barlow Condensed"`, '#fff'); },
+    async build() {
+      const bg = addMedia(await addBackground('grad:#1d2b64:#0b1026'));
+      store.updateClip(bg.id, { duration: 8 });
+      at(0.2);
+      const ti = addText('highlight');
+      store.updateClip(ti.id, { text: { content: t('URGENTE'), color: '#ffffff', bgColor: '#c8102e' }, duration: 7.8, animIn: { id: 'slideU', dur: 0.5 }, transform: { y: -0.15 } });
+      at(0);
+      addText('ticker');
+      await addAudio('ding');
+    },
+  },
+  {
+    id: 'credits', name: 'Créditos finais', desc: 'Créditos subindo sobre fundo escuro com música', aspect: '16:9',
+    preview: (x, W, H) => { x.fillStyle = '#000'; x.fillRect(0, 0, W, H); [t('DIREÇÃO'), t('Seu Nome'), '', t('EDIÇÃO'), t('Seu Nome')].forEach((l, i) => txt(x, l, W / 2, H * (0.25 + i * 0.12), `${i % 3 === 0 ? 700 : 400} ${H * 0.07}px Montserrat`, i % 3 === 0 ? '#aaa' : '#fff')); },
+    async build() {
+      const bg = addMedia(await addBackground('solid:#000000'));
+      store.updateClip(bg.id, { duration: 10 });
+      at(0);
+      addText('credits');
+      const mus = await addAudio('ambient');
+      if (mus) store.updateClip(mus.id, { duration: 10, fadeIn: 1, fadeOut: 2 });
+    },
+  },
+  {
+    id: 'beforeafter', name: 'Antes e depois', desc: 'Dois vídeos/fotos lado a lado com títulos', aspect: '16:9',
+    preview: (x, W, H) => { drawBackground(x, { kind: 'grad', colors: ['#434343', '#000000'] }, W / 2, H); x.save(); x.translate(W / 2, 0); drawBackground(x, { kind: 'grad', colors: ['#f7971e', '#ffd200'] }, W / 2, H); x.restore(); txt(x, t('ANTES'), W * 0.25, H * 0.85, `700 ${H * 0.09}px "Bebas Neue"`, '#fff'); txt(x, t('DEPOIS'), W * 0.75, H * 0.85, `700 ${H * 0.09}px "Bebas Neue"`, '#fff'); },
+    async build() {
+      toast(t('Escolha 2 arquivos: o de antes e o de depois'), 'info', 4000);
+      const files = ((await importViaDialog()) || []).filter((m) => m.type === 'image' || m.type === 'video');
+      if (files.length < 2) { toast(t('Escolha pelo menos 2 arquivos'), 'error'); return; }
+      at(0);
+      const a = addMedia(files[0]);
+      at(0);
+      const b = addMedia(files[1], { t: 0, trackId: null, newzone: 'top' });
+      const dur = Math.max(4, Math.min(a.duration, b.duration));
+      store.updateClip(a.id, { duration: dur }); store.updateClip(b.id, { duration: dur });
+      store.select([a.id, b.id]);
+      splitLayoutDialog();
+      setTimeout(() => document.querySelector('.lay-btn')?.click(), 50);
+      setTimeout(() => {
+        at(0);
+        const l = addText('title'); store.updateClip(l.id, { text: { content: t('ANTES'), size: 110 }, duration: dur, transform: { x: -0.25, y: 0.36 } });
+        at(0);
+        const r = addText('title'); store.updateClip(r.id, { text: { content: t('DEPOIS'), size: 110 }, duration: dur, transform: { x: 0.25, y: 0.36 } });
+      }, 120);
+    },
+  },
 ];
 
 function txt(x, s, cx, cy, font, color) { x.font = font; x.fillStyle = color; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(s, cx, cy); }
 function sparkles(x, W, H) { x.fillStyle = 'rgba(255,255,255,.8)'; for (let i = 0; i < 14; i++) { const px = (i * 131) % W, py = (i * 71) % H, s = 2 + (i % 3); x.beginPath(); x.arc(px, py, s, 0, Math.PI * 2); x.fill(); } }
 
-async function useTemplate(tp) {
+export async function useTemplate(tp) {
   const ok = await newProject({ name: t(tp.name), aspect: tp.aspect });
   if (!ok) return;
   try { await tp.build(); } catch (e) { console.error(e); }

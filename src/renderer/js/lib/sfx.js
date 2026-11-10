@@ -78,7 +78,7 @@ export const SFX = [
   { id: 'tone1k', name: 'Bipe de teste 1 kHz (TV)', cat: 'Ruído', dur: 10, gen: (c, d) => { const o = c.createOscillator(); o.frequency.value = 1000; const g = c.createGain(); g.gain.setValueAtTime(0, 0); g.gain.linearRampToValueAtTime(0.25, 0.02); g.gain.setValueAtTime(0.25, 9.9); g.gain.linearRampToValueAtTime(0, 10); o.connect(g).connect(d); o.start(0); o.stop(10); } },
   { id: 'countBeeps10', name: 'Bipes de contagem (10)', cat: 'Alertas', dur: 10, gen: (c, d) => { for (let i = 0; i < 10; i++) osc(c, 'sine', i === 9 ? 1320 : 880, i, 0.12, 0.35, d); } },
   { id: 'countBeeps3', name: 'Bipes 3-2-1', cat: 'Alertas', dur: 3.4, gen: (c, d) => { for (let i = 0; i < 3; i++) osc(c, 'sine', 880, i, 0.14, 0.4, d); osc(c, 'sine', 1760, 3, 0.35, 0.4, d); } },
-  { id: 'ding', name: 'Notificação (ding)', cat: 'Alertas', dur: 1.2, gen: (c, d) => { osc(c, 'sine', 1318, 0, 1, 0.4, d); osc(c, 'sine', 1975, 0.08, 0.9, 0.25, d); } },
+  { id: 'notify', name: 'Notificação (ding)', cat: 'Alertas', dur: 1.2, gen: (c, d) => { osc(c, 'sine', 1318, 0, 1, 0.4, d); osc(c, 'sine', 1975, 0.08, 0.9, 0.25, d); } },
   { id: 'bellDesk', name: 'Sineta de balcão', cat: 'Alertas', dur: 1.6, gen: (c, d) => { [2093, 2637, 3136].forEach((f, i) => osc(c, 'triangle', f, 0, 1.4, 0.25 / (i + 1), d)); } },
   { id: 'alarm', name: 'Alarme', cat: 'Alertas', dur: 2.4, gen: (c, d) => { for (let i = 0; i < 6; i++) osc(c, 'square', i % 2 ? 660 : 880, i * 0.4, 0.3, 0.18, d); } },
   { id: 'phone', name: 'Telefone tocando', cat: 'Objetos', dur: 3, gen: (c, d) => { for (let r = 0; r < 2; r++) for (let i = 0; i < 20; i++) { osc(c, 'sine', 440, r * 1.5 + i * 0.05, 0.04, 0.2, d); osc(c, 'sine', 480, r * 1.5 + i * 0.05, 0.04, 0.2, d); } } },

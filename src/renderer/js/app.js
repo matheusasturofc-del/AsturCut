@@ -27,7 +27,7 @@ import { removeSilencesDialog } from './silence.js';
 import { stabilize, autoReframeDialog } from './analysis.js';
 import { newSequence, nestSelection } from './sequences.js';
 import { textEditDialog } from './textedit.js';
-import { exportFrame, exportSrt, importSrt, chaptersDialog, splitLayoutDialog, reverseClip, beatsDialog, normalizeDialog, colorMatchSelected, ttsDialog, closeAllGaps, autoEnhance } from './extras.js';
+import { exportFrame, exportSrt, importSrt, chaptersDialog, splitLayoutDialog, reverseClip, beatsDialog, normalizeDialog, colorMatchSelected, ttsDialog, closeAllGaps, autoEnhance, exportXml } from './extras.js';
 import { multicamDialog, openMulticamMonitor } from './multicam.js';
 import { freezeFrame, openHistory, detectScenes, autoDuckDialog, audioCrossfades, createProxiesDialog, toggleProxies } from './protools.js';
 import { toggleScopes } from './color.js';
@@ -88,6 +88,7 @@ function mainMenu(anchor) {
       { label: t('Importar legendas (.srt)...'), onClick: () => importSrt() },
       { label: t('Capítulos do YouTube...'), shortcut: 'Ctrl+Shift+M', onClick: () => chaptersDialog() },
     ] },
+    { label: t('Exportar XML (Premiere / DaVinci Resolve)...'), onClick: () => exportXml() },
     '-',
     { label: t('Desfazer'), shortcut: 'Ctrl+Z', onClick: () => store.undo() },
     { label: t('Refazer'), shortcut: 'Ctrl+Y', onClick: () => store.redo() },

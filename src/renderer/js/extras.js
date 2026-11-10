@@ -502,3 +502,52 @@ export function closeAllGaps() {
   });
   toast(t('Espaços vazios removidos'), 'success');
 }
+
+// ---------- exportar XML (Final Cut Pro 7 / xmeml) — abre no Premiere e no DaVinci Resolve ----------
+const xesc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function pathUrl(p) {
+  let s = String(p).replace(/\\/g, '/');
+  if (/^[a-zA-Z]:\//.test(s)) s = '/' + s;
+  return 'file://localhost' + s.split('/').map((x, i) => (i === 0 ? x : encodeURIComponent(x).replace(/%3A/gi, ':'))).join('/');
+}
+export function buildXml() {
+  const { width: W, height: H, fps } = store.p.settings;
+  const tb = Math.round(fps || 30);
+  const F = (s) => Math.round(s * tb);
+  const rate = `<rate><timebase>${tb}</timebase><ntsc>FALSE</ntsc></rate>`;
+  const files = new Map();
+  const fileXml = (m) => {
+    if (files.has(m.id)) return `<file id="${files.get(m.id)}"/>`;
+    const id = 'file-' + (files.size + 1);
+    files.set(m.id, id);
+    const dur = m.type === 'image' ? 3600 : F(m.duration || 0);
+    return `<file id="${id}"><name>${xesc(m.name)}</name><pathurl>${xesc(pathUrl(m.path || m.name))}</pathurl>${rate}<duration>${dur}</duration><media>${m.type !== 'audio' ? `<video><samplecharacteristics><width>${m.width || W}</width><height>${m.height || H}</height></samplecharacteristics></video>` : ''}${m.type !== 'image' ? '<audio><channelcount>2</channelcount></audio>' : ''}</media></file>`;
+  };
+  let n = 0, skipped = 0;
+  const clipXml = (c, kind) => {
+    const m = store.media(c.mediaId);
+    if (!m) return '';
+    const spd = c.speed || 1;
+    const inF = F(c.in || 0), outF = F((c.in || 0) + c.duration * spd);
+    n++;
+    return `<clipitem id="clip-${n}"><name>${xesc(c.name || m.name)}</name><enabled>TRUE</enabled><duration>${m.type === 'image' ? 3600 : F(m.duration || c.duration)}</duration>${rate}<start>${F(c.start)}</start><end>${F(c.start + c.duration)}</end><in>${inF}</in><out>${outF}</out>${fileXml(m)}${kind === 'audio' ? '<sourcetrack><mediatype>audio</mediatype><trackindex>1</trackindex></sourcetrack>' : ''}${spd !== 1 ? `<filter><effect><name>Time Remap</name><effectid>timeremap</effectid><effectcategory>motion</effectcategory><effecttype>motion</effecttype><mediatype>video</mediatype><parameter><parameterid>speed</parameterid><name>speed</name><value>${(spd * 100).toFixed(2)}</value></parameter></effect></filter>` : ''}</clipitem>`;
+  };
+  const vTracks = store.p.tracks.filter((tr) => tr.type === 'video').slice().reverse(); // de baixo para cima
+  const aTracks = store.p.tracks.filter((tr) => tr.type === 'audio');
+  const video = vTracks.map((tr) => `<track>${store.clipsOn(tr.id).map((c) => { if (c.type === 'video' || c.type === 'image') return clipXml(c, 'video'); skipped++; return ''; }).join('')}</track>`).join('');
+  const audioClips = [];
+  for (const tr of aTracks) audioClips.push(store.clipsOn(tr.id).filter((c) => c.type === 'audio'));
+  // áudio embutido dos vídeos numa trilha própria
+  const embedded = store.p.clips.filter((c) => c.type === 'video' && !c.audioDetached).sort((a, b) => a.start - b.start);
+  if (embedded.length) audioClips.unshift(embedded);
+  const audio = audioClips.map((list) => `<track>${list.map((c) => clipXml(c, 'audio')).join('')}</track>`).join('');
+  const dur = F(store.duration());
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n<xmeml version="4"><sequence id="sequence-1"><name>${xesc(store.p.name)}</name><duration>${dur}</duration>${rate}<timecode>${rate}<string>00:00:00:00</string><frame>0</frame><displayformat>NDF</displayformat></timecode><media><video><format><samplecharacteristics>${rate}<width>${W}</width><height>${H}</height><pixelaspectratio>square</pixelaspectratio></samplecharacteristics></format>${video}</video><audio>${audio}</audio></media>${(store.p.markers || []).map((m) => `<marker><name>${xesc(m.name || '')}</name><comment>${xesc(m.note || '')}</comment><in>${F(m.time)}</in><out>-1</out></marker>`).join('')}</sequence></xmeml>\n`;
+  return { xml, skipped };
+}
+export async function exportXml() {
+  if (!store.p.clips.length) { toast(t('A linha do tempo está vazia'), 'error'); return; }
+  const { xml, skipped } = buildXml();
+  const p = await saveFile(projName(), 'xml', { text: xml, title: t('Exportar XML (Premiere / DaVinci Resolve)') });
+  if (p && skipped) toast(t('Textos, stickers e efeitos do AsturCut não vão no XML ({n} itens) — só vídeos, fotos e áudios.', { n: skipped }), 'info', 6000);
+}

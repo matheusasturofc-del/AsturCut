@@ -2,7 +2,7 @@
   "name": "asturcut",
   "productName": "AsturCut",
   "desktopName": "asturcut.desktop",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "AsturCut - Editor de vídeo para PC",
   "main": "src/main/main.js",
   "author": "Matheus Astur",
