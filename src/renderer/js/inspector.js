@@ -23,7 +23,7 @@ import { switchSequence, renameSequence } from './sequences.js';
 import { ttsDialog, autoEnhance } from './extras.js';
 import { VOICES } from './lib/voice.js';
 const tr = (s, v) => t(s, v);
-import { whiteBalanceFrom, applyColorToMedia, copyAttributes, pasteAttributesDialog, hasAttributes, gainDialog, speedDialog, toDb } from './editTools.js';
+import { whiteBalanceFrom, applyColorToMedia, copyAttributes, pasteAttributesDialog, hasAttributes, gainDialog, speedDialog, toDb, userLooks, saveLook, applyLook, deleteLook } from './editTools.js';
 
 let panel, bodyEl;
 const lastTab = {};
@@ -494,6 +494,17 @@ function adjustTab(c) {
 }
 
 // ---------- Cor (estilo Lumetri) ----------
+// Meus looks: salvar e aplicar predefinições de cor/filtro/efeitos
+function looksSection(c) {
+  const list = userLooks();
+  return section(t('Meus looks'),
+    el('div', { class: 'muted small' }, t('Salve a cor, o filtro e os efeitos deste clipe para usar em outros vídeos e projetos.')),
+    el('div', { class: 'btn-row' }, el('button', { class: 'btn sm primary', onclick: () => saveLook(c) }, '+ ' + t('Salvar look atual'))),
+    list.length ? el('div', { class: 'chips looks' }, list.map((l, i) => el('span', { class: 'chip look' },
+      el('button', { class: 'look-apply', title: t('Aplicar nos clipes selecionados'), onclick: () => applyLook(l) }, l.name),
+      el('button', { class: 'look-del', title: t('Excluir'), onclick: () => deleteLook(i) }, '×')))) : null);
+}
+
 // HSL: ajusta matiz/saturação/luminância de uma cor específica (como o HSL do CapCut e o HSL Secundário do Lumetri)
 let hslBand = 'red';
 function hslSection(c, g) {
@@ -529,6 +540,7 @@ function colorTab(c) {
   bodyEl.append(section(t('Curvas'), curvesEditor(g.curves, ch)));
   const luts = Object.entries(store.p.luts || {});
   if (c.type === 'video' || c.type === 'image') bodyEl.append(hslSection(c, g));
+  bodyEl.append(looksSection(c));
   bodyEl.append(section('LUT',
     select('LUT:', g.lut || '', [['', t('Nenhuma')], ...luts.map(([id, l]) => [id, l.name])], (v) => updC(c, { grade: { lut: v || null } })),
     g.lut ? slider('Intensidade', Math.round((g.lutMix ?? 1) * 100), { min: 0, max: 100, unit: '%', def: 100, onInput: (v) => upd(c, { grade: { lutMix: v / 100 } }) }) : null,

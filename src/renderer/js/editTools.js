@@ -1,6 +1,7 @@
 // Ferramentas de edição: velocidade/duração (Ctrl+R), ganho de áudio (G), rótulos de cor, atributos
 import { store, bus } from './store.js';
-import { el, modal, toast, deepClone, fmtShort, clamp } from './util.js';
+import { el, modal, toast, deepClone, fmtShort, clamp, promptDialog } from './util.js';
+import { settings } from './settings.js';
 import { t } from './i18n.js';
 
 // rótulos de cor (como no Premiere) — organizam as partes do vídeo na linha do tempo
@@ -105,7 +106,7 @@ export function gainDialog(clips = store.selectedClips()) {
 let attrClip = null;
 export function copyAttributes(c = store.primarySelected()) {
   if (!c) return;
-  attrClip = deepClone({ adjust: c.adjust, filter: c.filter, effects: c.effects, transform: c.transform, kf: c.kf, animIn: c.animIn, animOut: c.animOut, animLoop: c.animLoop, blend: c.blend, volume: c.volume, crop: c.crop });
+  attrClip = deepClone({ adjust: c.adjust, grade: c.grade || null, voice: c.voice || null, filter: c.filter, effects: c.effects, transform: c.transform, kf: c.kf, animIn: c.animIn, animOut: c.animOut, animLoop: c.animLoop, blend: c.blend, volume: c.volume, crop: c.crop });
   toast(t('Atributos copiados'), 'info', 1300);
 }
 export const hasAttributes = () => !!attrClip;
@@ -118,7 +119,8 @@ export function pasteAttributes(parts = ['adjust', 'filter', 'effects', 'transfo
     const c = store.clip(id); if (!c) continue;
     const a = deepClone(attrClip);
     const visual = c.type !== 'audio';
-    if (visual && parts.includes('adjust')) c.adjust = a.adjust;
+    if (visual && parts.includes('adjust')) { c.adjust = a.adjust; if (a.grade) c.grade = a.grade; else delete c.grade; }
+    if (hasAudio(c) && parts.includes('volume')) { if (a.voice) c.voice = a.voice; }
     if (visual && parts.includes('filter')) c.filter = a.filter;
     if (visual && parts.includes('effects')) c.effects = a.effects;
     if (visual && parts.includes('transform')) c.transform = a.transform;
@@ -163,3 +165,30 @@ export function whiteBalanceFrom(c, r, g, b) {
   toast(t('Balanço de branco aplicado'), 'success', 1500);
 }
 void bus; void fmtShort;
+
+// ---------- Meus looks: predefinições salvas pelo usuário (cor + filtro + efeitos) ----------
+export function userLooks() { return settings.get('userLooks') || []; }
+export async function saveLook(c) {
+  if (!c) return;
+  const name = await promptDialog(t('Nome do look'), t('Meu look {n}', { n: userLooks().length + 1 }));
+  if (!name) return;
+  const look = deepClone({ name, adjust: c.adjust, grade: c.grade || null, filter: c.filter || null, effects: (c.effects || []).filter((e) => e.id) });
+  settings.set('userLooks', [...userLooks(), look]);
+  toast(t('Look "{n}" salvo — aplique em outros clipes na aba Cor', { n: name }), 'success');
+  bus.emit('selection');
+}
+export function applyLook(look, clips = store.selectedClips()) {
+  const vis = clips.filter((c) => c.type !== 'audio');
+  if (!vis.length) return;
+  store.batch('look', () => {
+    for (const c of vis) {
+      const l = deepClone(look);
+      c.adjust = { ...c.adjust, ...l.adjust };
+      if (l.grade) c.grade = l.grade; else delete c.grade;
+      c.filter = l.filter;
+      if (c.type !== 'effect') c.effects = l.effects;
+    }
+  });
+  toast(t('Look aplicado em {n} clipe(s)', { n: vis.length }), 'success', 1500);
+}
+export function deleteLook(i) { const l = userLooks().slice(); l.splice(i, 1); settings.set('userLooks', l); bus.emit('selection'); }
