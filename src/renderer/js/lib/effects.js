@@ -59,6 +59,38 @@ export function vignette(ctx, W, H, k) {
   reset(ctx);
 }
 
+// chuvisco de TV (canal fora do ar): ruído preto e branco, linhas e faixa rolando
+let staticCv = null;
+function tvStatic(ctx, W, H, t, k) {
+  const w = Math.max(80, Math.round(W / 3)), h = Math.max(45, Math.round(H / 3));
+  if (!staticCv) staticCv = document.createElement('canvas');
+  if (staticCv.width !== w || staticCv.height !== h) { staticCv.width = w; staticCv.height = h; }
+  const sx = staticCv.getContext('2d');
+  const img = sx.createImageData(w, h), d = img.data;
+  let seed = ((Math.floor(t * 30) + 1) * 2654435761) >>> 0;
+  const roll = (t * 0.35) % 1;
+  for (let y = 0; y < h; y++) {
+    const yy = y / h;
+    const band = 0.72 + 0.28 * Math.sin((yy * 9 + t * 4) * Math.PI);
+    const bright = Math.abs(yy - roll) < 0.04 ? 1.35 : 1;
+    for (let x = 0; x < w; x++) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      const v = Math.min(255, (seed >>> 24) * band * bright);
+      const i = (y * w + x) * 4;
+      d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+    }
+  }
+  sx.putImageData(img, 0, 0);
+  ctx.save();
+  ctx.globalAlpha = clamp(k, 0, 1);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(staticCv, 0, 0, W, H);
+  ctx.globalAlpha = clamp(k, 0, 1) * 0.28; ctx.fillStyle = '#000';
+  const step = Math.max(2, Math.round(H / 270));
+  for (let y = 0; y < H; y += step * 2) ctx.fillRect(0, y, W, step);
+  ctx.restore();
+}
+
 function grain(ctx, W, H, k, t) {
   const n = noise();
   clipped(ctx, W, H, (sc) => {
@@ -336,6 +368,27 @@ export const EFFECTS = [
     post: (ctx, W, H, t, k, S) => { rgbSplit(ctx, W, H, 6 * k * S); scanlines(ctx, W, H, k * 0.7, S); grain(ctx, W, H, k * 0.6, t); trackingBand(ctx, W, H, t, k); } },
   { id: 'oldfilm', name: 'Filme antigo', cat: 'Retrô', c: ['#d8b78e', '#3e2c1c'], pre: (s, t, k) => s.filter.push(`sepia(${0.7 * k}) contrast(${1 + 0.15 * k}) brightness(${1 + (rand(Math.floor(t * 18)) - 0.5) * 0.25 * k})`),
     post: (ctx, W, H, t, k, S) => { grain(ctx, W, H, k * 0.8, t); filmScratches(ctx, W, H, t, k, S); vignette(ctx, W, H, k * 0.8); } },
+  { id: 'zoomPulse', name: 'Pulso de zoom', cat: 'Dinâmicos', c: ['#f093fb', '#f5576c'], pre: (s, t, k) => { s.scale *= 1 + 0.06 * k * Math.max(0, Math.sin(t * Math.PI * 2)); } },
+  { id: 'camShake', name: 'Câmera na mão', cat: 'Dinâmicos', c: ['#c3cfe2', '#7b8fa6'], pre: (s, t, k) => { s.dx += Math.sin(t * 2.3) * 8 * k * s.S + Math.sin(t * 7.1) * 2 * k * s.S; s.dy += Math.cos(t * 1.9) * 6 * k * s.S; s.rot += Math.sin(t * 1.3) * 0.6 * k; s.scale *= 1.03; } },
+  { id: 'earthquake', name: 'Terremoto', cat: 'Dinâmicos', c: ['#8e2de2', '#4a00e0'], pre: (s, t, k) => { s.dx += (rand(Math.floor(t * 30)) - 0.5) * 40 * k * s.S; s.dy += (rand(Math.floor(t * 30) + 3) - 0.5) * 40 * k * s.S; s.scale *= 1.06; } },
+  { id: 'strobe', name: 'Estroboscópio', cat: 'Dinâmicos', c: ['#ffffff', '#000000'], post: (ctx, W, H, t, k) => { if (Math.floor(t * 8) % 2 === 0) { ctx.save(); ctx.globalAlpha = 0.7 * k; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.restore(); } } },
+  { id: 'psychedelic', name: 'Psicodélico', cat: 'Cor', c: ['#ff00c8', '#ffe600'], pre: (s, t, k) => { s.filter.push(`hue-rotate(${(t * 360 * k) % 360}deg) saturate(${1 + k * 1.5})`); s.scale *= 1 + 0.03 * Math.sin(t * 3); s.rot += 2 * k * Math.sin(t * 2); } },
+  { id: 'nightVision', name: 'Visão noturna', cat: 'Cor', c: ['#00ff66', '#003314'], pre: (s, t, k) => s.filter.push(`grayscale(${k}) brightness(${1 + 0.3 * k}) contrast(1.2)`), post: (ctx, W, H, t, k) => { tint(ctx, W, H, '#00ff55', 'multiply', 0.6 * k); grain(ctx, W, H, k * 0.7, t); vignette(ctx, W, H, k); } },
+  { id: 'thermal', name: 'Câmera térmica', cat: 'Cor', c: ['#ff0000', '#0000ff'], pre: (s, t, k) => s.filter.push(`invert(${k}) hue-rotate(${180 * k}deg) saturate(${1 + 2 * k})`) },
+  { id: 'spotlight', name: 'Holofote', cat: 'Luz', c: ['#fff3b0', '#000000'], post: (ctx, W, H, t, k) => { const x = W * (0.5 + 0.25 * Math.sin(t * 0.8)), g = ctx.createRadialGradient(x, H / 2, H * 0.15, x, H / 2, H * 0.7); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${0.85 * k})`); ctx.save(); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore(); } },
+  { id: 'fireflies', name: 'Vaga-lumes', cat: 'Partículas', c: ['#ffe66d', '#1a1a2e'], post: (ctx, W, H, t, k, S) => { ctx.save(); ctx.globalCompositeOperation = 'screen'; for (let i = 0; i < 40 * k + 5; i++) { const x = (rand(i) * W + Math.sin(t * 0.7 + i) * 60 * S), y = (rand(i + 9) * H + Math.cos(t * 0.5 + i * 2) * 40 * S), a = 0.5 + 0.5 * Math.sin(t * 3 + i); const g = ctx.createRadialGradient(x, y, 0, x, y, 14 * S); g.addColorStop(0, `rgba(255,230,110,${a})`); g.addColorStop(1, 'rgba(255,230,110,0)'); ctx.fillStyle = g; ctx.fillRect(x - 14 * S, y - 14 * S, 28 * S, 28 * S); } ctx.restore(); } },
+  { id: 'rainHeavy', name: 'Tempestade', cat: 'Partículas', c: ['#4b6cb7', '#182848'], pre: (s, t, k) => s.filter.push(`brightness(${1 - 0.25 * k}) saturate(${1 - 0.3 * k})`), post: (ctx, W, H, t, k, S) => { particles(ctx, W, H, t, Math.min(1, k * 1.5), 'rain', S); particles(ctx, W, H, t + 3, k, 'rain', S); if (rand(Math.floor(t * 4)) > 0.93) { ctx.save(); ctx.globalAlpha = 0.6 * k; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.restore(); } } },
+  { id: 'tvstaticLight', name: 'Interferência leve', cat: 'Retrô', c: ['#bbbbbb', '#333333'], post: (ctx, W, H, t, k) => tvStatic(ctx, W, H, t, k * 0.25) },
+  { id: 'camcorder', name: 'Filmadora (REC)', cat: 'Retrô', c: ['#ff3b30', '#222222'], post: (ctx, W, H, t, k, S) => { scanlines(ctx, W, H, k * 0.3, S); grain(ctx, W, H, k * 0.4, t); ctx.save(); ctx.fillStyle = '#ff3b30'; if (Math.floor(t * 1.5) % 2 === 0) { ctx.beginPath(); ctx.arc(W * 0.06, H * 0.08, 14 * S, 0, Math.PI * 2); ctx.fill(); } ctx.fillStyle = '#fff'; ctx.font = `700 ${34 * S}px monospace`; ctx.fillText('REC', W * 0.06 + 26 * S, H * 0.08 + 12 * S); const s2 = Math.floor(t); ctx.fillText(`00:${String(Math.floor(s2 / 60)).padStart(2, '0')}:${String(s2 % 60).padStart(2, '0')}`, W * 0.78, H * 0.08 + 12 * S); ctx.restore(); } },
+  { id: 'cinemaBars', name: 'Faixas de cinema', cat: 'Retrô', c: ['#000000', '#444444'], post: (ctx, W, H, t, k) => letterbox(ctx, W, H, k) },
+  { id: 'dreamGlow', name: 'Brilho de sonho', cat: 'Cor', c: ['#ffd1f5', '#a18cd1'], post: (ctx, W, H, t, k, S) => glow(ctx, W, H, k * 0.9, S, 'saturate(1.3)') },
+  { id: 'snowHeavy', name: 'Nevasca', cat: 'Partículas', c: ['#e0f7ff', '#89c2d9'], post: (ctx, W, H, t, k, S) => { particles(ctx, W, H, t, Math.min(1, k * 1.6), 'snow', S); particles(ctx, W, H, t + 7, k, 'snow', S); } },
+  { id: 'party', name: 'Festa', cat: 'Partículas', c: ['#ff6ec7', '#ffd23f'], post: (ctx, W, H, t, k, S) => { particles(ctx, W, H, t, k, 'confetti', S); particles(ctx, W, H, t, k * 0.6, 'sparkle', S); } },
+  { id: 'loveRain', name: 'Chuva de corações', cat: 'Partículas', c: ['#ff4d6d', '#ffb3c1'], post: (ctx, W, H, t, k, S) => { particles(ctx, W, H, t, Math.min(1, k * 1.5), 'hearts', S); } },
+  { id: 'heatwave', name: 'Onda de calor', cat: 'Distorção', c: ['#ff9a3d', '#ff3d3d'], post: (ctx, W, H, t, k, S) => { const s = getScratch(2, W, H); const sc = s.getContext('2d'); sc.clearRect(0, 0, W, H); sc.drawImage(ctx.canvas, 0, 0); ctx.clearRect(0, 0, W, H); const n = 60; for (let i = 0; i < n; i++) { const y = i * H / n; ctx.drawImage(s, 0, y, W, H / n + 1, Math.sin(i * 0.5 + t * 6) * 8 * k * S, y, W, H / n + 1); } } },
+  { id: 'mirrorH', name: 'Espelho', cat: 'Distorção', c: ['#89f7fe', '#66a6ff'], post: (ctx, W, H) => mirror(ctx, W, H) },
+  { id: 'split4', name: 'Tela dividida 4x', cat: 'Distorção', c: ['#f6d365', '#fda085'], post: (ctx, W, H) => multiScreen(ctx, W, H, 2) },
+  { id: 'tvstatic', name: 'Chuvisco de TV (sem sinal)', cat: 'Retrô', c: ['#9a9a9a', '#1a1a1a'], post: (ctx, W, H, t, k) => tvStatic(ctx, W, H, t, k) },
   { id: 'scanlines', name: 'Linhas de TV', cat: 'Retrô', c: ['#232526', '#414345'], post: (ctx, W, H, t, k, S) => scanlines(ctx, W, H, k, S) },
   { id: 'retro8', name: '8-bit', cat: 'Retrô', c: ['#56ab2f', '#a8e063'], pre: (s, t, k) => s.filter.push(`saturate(${1 + k}) contrast(1.2)`), post: (ctx, W, H, t, k, S) => pixelate(ctx, W, H, 8 + 14 * k * S) },
   { id: 'polaroid', name: 'Polaroid', cat: 'Retrô', c: ['#fdfcfb', '#e2d1c3'], pre: (s, t, k) => s.filter.push(`sepia(${0.2 * k}) contrast(${1 - 0.1 * k}) brightness(${1 + 0.08 * k})`), post: (ctx, W, H, t, k, S) => { vignette(ctx, W, H, 0.4 * k); frameBorder(ctx, W, H, k * 0.6, S, '#f4f1ea'); } },

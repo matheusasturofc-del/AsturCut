@@ -147,7 +147,9 @@ function clipTools(c) {
   const split = tool('split', 'split', 'Dividir', () => { const r = store.splitAt(store.time, [c.id]); if (!r.length) toast(t('Coloque o cursor dentro do clipe para dividir'), 'info'); });
   const del = tool('delete', 'trash', 'Excluir', () => { const tr = store.track(c.trackId); if (tr?.main) store.rippleDelete([c.id]); else store.deleteClips([c.id]); }, 'danger');
   const dup = tool('dup', 'duplicate', 'Duplicar', () => store.duplicate([c.id]));
+  if (c.type === 'text' && c.autoCaption) list.push(tool('cap-style', 'captions', 'Estilo das legendas', () => openInspector('captions', t('Legendas'))));
   if (c.type === 'text') list.push(tool('edit-text', 'text', 'Editar', () => openInspector('text', t('Texto'))));
+  if (c.type === 'video' || c.type === 'audio') list.push(tool('auto-cap', 'captions', 'Legendas automáticas', () => openCaptionsDialog([c])));
   list.push(split);
   if (c.type === 'video' || c.type === 'audio') {
     list.push(tool('speed', 'stopwatch', 'Velocidade', () => openInspector('speed', t('Velocidade'))));

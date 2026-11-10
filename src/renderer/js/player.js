@@ -4,7 +4,7 @@ import { $, el, icon, fmtTime, clamp, dragHandler, dropdownFrom } from './util.j
 import { renderFrame, activeAt, sourceTime, hasMedia } from './compositor.js';
 import { getPlayer, allPlayers, gcPlayers, audioCtx } from './media.js';
 import { settings } from './settings.js';
-import { valueAt, setValue, transformAt, localTime } from './keyframes.js';
+import { valueAt, setValue, transformAt, localTime, speedAt } from './keyframes.js';
 import { routePlayer } from './audiomix.js';
 import { toggleScopes } from './color.js';
 
@@ -186,7 +186,7 @@ export function syncMedia(t, playing) {
       if (lt < 0 || lt > c.duration) vol = 0;
       if (tr.muted || (c.type === 'video' && tr.hidden && false)) vol = 0;
       if (p.gain) p.gain.gain.value = vol; else el.volume = clamp(vol, 0, 1);
-      const rate = clamp((c.speed || 1) * (player.rateMul || 1), 0.0625, 16);
+      const rate = clamp(speedAt(c, clamp(lt, 0, c.duration)) * (player.rateMul || 1), 0.0625, 16);
       if (Math.abs(el.playbackRate - rate) > 0.001) el.playbackRate = rate;
       el.preservesPitch = !c.changePitch;
       const inRange = lt >= 0 && lt < c.duration;

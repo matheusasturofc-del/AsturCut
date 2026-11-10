@@ -416,6 +416,7 @@ export function clipMenu(x, y, c) {
     { label: 'Velocidade', submenu: [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5].map((s) => ({ label: s + 'x', checked: (c.speed || 1) === s, onClick: () => setSpeed(c, s) })) },
     { label: 'Velocidade e duração...', shortcut: 'Ctrl+R', onClick: () => speedDialog() },
     hasAudio(c) ? { label: 'Ganho de áudio...', shortcut: 'G', onClick: () => gainDialog() } : null,
+    hasAudio(c) ? { label: 'Legendas automáticas...', onClick: () => openCaptionsDialog(store.withLinked([c.id]).map((id) => store.clip(id))) } : null,
     hasAudio(c) ? { label: 'Tirar silêncios...', onClick: () => removeSilencesDialog() } : null,
     c.type === 'video' ? { label: 'Congelar quadro', shortcut: 'Shift+F', onClick: () => freezeFrame() } : null,
     c.type === 'video' ? { label: 'Detectar cenas e cortar...', onClick: () => detectScenes(c) } : null,

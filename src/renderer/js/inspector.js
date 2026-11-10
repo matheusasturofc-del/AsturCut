@@ -17,6 +17,7 @@ import { DEFAULT_CHROMA, DEFAULT_CUTOUT, cutoutState, ensureSegmenter, keyBypass
 import { hasKf, anyKf, valueAt, setValue, toggleAnim, toggleKey, keyAtCursor, jumpKey, localTime, EASINGS, setEaseAtCursor, easeAtCursor } from './keyframes.js';
 import { colorBypass, defaultMask } from './compositor.js';
 import { defaultGrade, colorWheel, curvesEditor, importLut, toggleScopes } from './color.js';
+import { captionsPanel } from './captions.js';
 import { whiteBalanceFrom, applyColorToMedia, copyAttributes, pasteAttributesDialog, hasAttributes, gainDialog, speedDialog, toDb } from './editTools.js';
 
 let panel, bodyEl;
@@ -88,7 +89,7 @@ function kfSection(c) {
     el('div', { class: 'btn-row' },
       el('button', { class: 'btn sm', onclick: () => jumpKey(c, -1) }, '‹ ' + t('Anterior')),
       el('button', { class: 'btn sm', onclick: () => jumpKey(c, 1) }, t('Próximo') + ' ›'),
-      el('button', { class: 'btn sm danger', onclick: () => { store.begin(); for (const k of Object.keys(c.kf)) { const pr = k; const val = valueAt(c, pr, localTime(c)); delete c.kf[pr]; if (pr === 'volume') c.volume = val; else c.transform[pr] = val; } store.commit('kf'); } }, t('Remover todos'))));
+      el('button', { class: 'btn sm danger', onclick: () => { store.begin(); for (const k of Object.keys(c.kf)) { const pr = k; const val = valueAt(c, pr, localTime(c)); delete c.kf[pr]; if (pr === 'volume') c.volume = val; else if (pr === 'speed') c.speed = val; else c.transform[pr] = val; } store.commit('kf'); } }, t('Remover todos'))));
 }
 
 function color(label, value, onInput) {
@@ -206,7 +207,8 @@ function tabsFor(c) {
   switch (c.type) {
     case 'video': return [['basic', 'Vídeo'], ['audio', 'Áudio'], ['speed', 'Velocidade'], ['anim', 'Animação'], ['adjust', 'Ajuste'], ['color', 'Cor'], ['fx', 'Efeitos']];
     case 'image': return [['basic', 'Imagem'], ['anim', 'Animação'], ['adjust', 'Ajuste'], ['color', 'Cor'], ['fx', 'Efeitos']];
-    case 'text': return [['text', 'Texto'], ['basic', 'Transformar'], ['anim', 'Animação'], ['fx', 'Efeitos']];
+    case 'gen': return [['basic', 'Vídeo'], ['anim', 'Animação'], ['adjust', 'Ajuste'], ['color', 'Cor'], ['fx', 'Efeitos']];
+    case 'text': return c.autoCaption ? [['captions', 'Legendas'], ['text', 'Texto'], ['basic', 'Transformar'], ['anim', 'Animação']] : [['text', 'Texto'], ['basic', 'Transformar'], ['anim', 'Animação'], ['fx', 'Efeitos']];
     case 'sticker': case 'shape': return [['basic', c.type === 'shape' ? 'Forma' : 'Sticker'], ['anim', 'Animação'], ['fx', 'Efeitos']];
     case 'audio': return [['audio', 'Áudio'], ['speed', 'Velocidade']];
     case 'effect': return [['fx', 'Efeito'], ['timing', 'Tempo']];
@@ -226,7 +228,7 @@ function renderClip(c) {
   else if (focusTab && tabs.some((x) => x[0] === focusTab)) active = focusTab;
   if (!tabs.some((t) => t[0] === active) && active !== 'keying') active = tabs[0][0];
   if (!focusTab) header('', tabs, active, (id) => { lastTab[c.type] = id; render(); });
-  const fn = { basic: basicTab, text: textTab, audio: audioTab, speed: speedTab, anim: animTab, adjust: adjustTab, fx: fxTab, filter: filterTab, timing: timingTab, color: colorTab, keying: (x) => bodyEl.append(keyingSection(x)) }[active];
+  const fn = { basic: basicTab, text: textTab, audio: audioTab, speed: speedTab, anim: animTab, adjust: adjustTab, fx: fxTab, filter: filterTab, timing: timingTab, color: colorTab, captions: (x) => bodyEl.append(captionsPanel(x)), keying: (x) => bodyEl.append(keyingSection(x)) }[active];
   fn(c);
   bodyEl.append(el('div', { class: 'insp-foot muted small' }, t('Início {a} · Duração {b}', { a: fmtShort(c.start), b: fmtShort(c.duration) })));
 }
@@ -385,6 +387,18 @@ function speedTab(c) {
     slider('Personalizado', c.speed || 1, { min: 0.1, max: 10, step: 0.05, unit: 'x', def: 1, onInput: (v) => { const src = c.duration * (c.speed || 1); c.speed = v; c.duration = src / v; store.touch(); } }),
     toggle('Alterar tom', !!c.changePitch, (v) => updC(c, { changePitch: v })),
     el('div', { class: 'muted small' }, t('Nova duração: {d}', { d: fmtShort(c.duration) })),
+  ));
+  // rampa de velocidade (time remapping): velocidade varia ao longo do clipe
+  const ramp = (pts) => { store.begin(); c.kf = { ...(c.kf || {}) }; if (pts) c.kf.speed = pts.map(([p, v]) => ({ t: +(p * c.duration).toFixed(3), v, e: 'ease' })); else delete c.kf.speed; store.commit('kf'); };
+  bodyEl.append(section(t('Rampa de velocidade'),
+    el('div', { class: 'muted small' }, t('A velocidade muda ao longo do clipe (como o Time Remapping do Premiere). Use o cronômetro para criar keyframes no cursor.')),
+    animSlider(c, 'speed', 'Velocidade no cursor', { min: 0.1, max: 10, step: 0.05, unit: 'x', def: 1 }),
+    el('div', { class: 'chips' },
+      el('button', { class: 'chip', onclick: () => ramp([[0, 0.4], [1, 2.5]]) }, t('Lento → rápido')),
+      el('button', { class: 'chip', onclick: () => ramp([[0, 2.5], [1, 0.4]]) }, t('Rápido → lento')),
+      el('button', { class: 'chip', onclick: () => ramp([[0, 3], [0.35, 3], [0.45, 0.3], [0.6, 0.3], [0.7, 3], [1, 3]]) }, t('Montagem (rápido-lento-rápido)')),
+      el('button', { class: 'chip', onclick: () => ramp([[0, 1], [0.4, 1], [0.5, 0.2], [0.65, 0.2], [0.75, 1], [1, 1]]) }, t('Câmera lenta no meio')),
+      hasKf(c, 'speed') ? el('button', { class: 'chip', onclick: () => ramp(null) }, t('Remover rampa')) : null),
   ));
 }
 

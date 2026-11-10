@@ -7,9 +7,10 @@ import { FILTER_MAP, filterCss } from './lib/filters.js';
 import { TRANSITION_MAP } from './lib/transitions.js';
 import { clipAnimation } from './lib/animations.js';
 import { drawShape } from './lib/stickers.js';
-import { transformAt } from './keyframes.js';
+import { transformAt, srcOffset } from './keyframes.js';
 import { needsKeying, keyFrame } from './keying.js';
 import { gradeFilter } from './color.js';
+import { drawGen } from './lib/stock.js';
 
 // clipes com "antes/depois" ativo (mostra sem correção de cor) — só em tempo de execução
 export const colorBypass = new Set();
@@ -63,14 +64,14 @@ function layer(i, W, H) {
   return c;
 }
 
-export const VISUAL = ['video', 'image', 'text', 'sticker', 'shape', 'effect', 'filter'];
+export const VISUAL = ['video', 'image', 'text', 'sticker', 'shape', 'effect', 'filter', 'gen'];
 export const hasMedia = (c) => c.type === 'video' || c.type === 'audio';
 
 // tempo da mídia de origem para um clipe
 export function sourceTime(clip, lt) {
   if (clip.freeze) return clip.in || 0; // quadro congelado
   const m = store.media(clip.mediaId);
-  const t = (clip.in || 0) + lt * (clip.speed || 1);
+  const t = (clip.in || 0) + srcOffset(clip, lt);
   return clamp(t, 0, Math.max(0, (m?.duration || 0) - 0.04));
 }
 
@@ -208,6 +209,7 @@ function drawKaraoke(ctx, tx, lines, x0, y0, lh, lt) {
       const w = ctx.measureText(p).width;
       if (p && !/^\s+$/.test(p)) {
         if (K.mode === 'fill' ? idx <= k : idx === k) {
+          if (K.pop && idx === k) { ctx.save(); ctx.translate(x + w / 2, y0 + li * lh); ctx.scale(1.18, 1.18); ctx.translate(-(x + w / 2), -(y0 + li * lh)); }
           if (K.box) {
             const pad = lh * 0.08;
             ctx.fillStyle = K.color;
@@ -215,6 +217,7 @@ function drawKaraoke(ctx, tx, lines, x0, y0, lh, lt) {
             ctx.fillStyle = K.ink || '#000000';
           } else ctx.fillStyle = K.color;
           ctx.fillText(p, x, y0 + li * lh);
+          if (K.pop && idx === k) ctx.restore();
         }
         idx++;
       }
@@ -305,6 +308,9 @@ function renderClip(idx, clip, t, W, H, S, hits) {
         ctx.drawImage(img, sx * r, sy * r, sw * r, sh * r, -size.w / 2 + sx * k, -size.h / 2 + sy * k, sw * k, sh * k);
       } else ctx.drawImage(img, -size.w / 2, -size.h / 2, size.w, size.h);
     }
+  } else if (clip.type === 'gen') {
+    ctx.translate(-size.w / 2, -size.h / 2);
+    drawGen(ctx, clip.gen, ltc, size.w, size.h);
   } else if (clip.type === 'text') {
     drawText(ctx, clip.text, S, anim, ltc);
   } else if (clip.type === 'sticker') {

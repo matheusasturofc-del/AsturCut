@@ -206,3 +206,46 @@ export async function handleDrop(dt, info) {
     }
   }
 }
+
+// "Sem sinal": camada de chuvisco de TV por cima de tudo + chiado no mesmo tempo
+export async function addNoSignal(dur = 3) {
+  const t0 = store.time;
+  const { addLibraryAudio } = await import('./media.js');
+  const m = await addLibraryAudio('tvstatic');
+  store.batch('no-signal', () => {
+    const vtr = store.addTrack('video', 0);
+    store.addClip({ trackId: vtr.id, type: 'effect', name: t('Chuvisco de TV (sem sinal)'), start: t0, duration: dur, effects: [{ id: 'tvstatic', intensity: 1 }] }, { commit: false });
+    if (m) {
+      const atr = store.findTrackFor('audio', t0, t0 + dur);
+      store.addClip({ trackId: atr.id, type: 'audio', mediaId: m.id, name: m.name, start: t0, duration: Math.min(dur, m.duration || dur), in: 0 }, { commit: false });
+    }
+  });
+  bus.emit('selection');
+  toast(t('Tela "sem sinal" adicionada (chuvisco + chiado)'), 'success');
+}
+
+// banco de mídia: vídeo gerado (chuvisco, barras, contagem...) + som que acompanha
+export async function addStock(id) {
+  const { STOCK_MAP } = await import('./lib/stock.js');
+  const v = STOCK_MAP[id];
+  if (!v) return;
+  const dur = v.dur || 5;
+  let m = null;
+  if (v.sfx) { const { addLibraryAudio } = await import('./media.js'); m = await addLibraryAudio(v.sfx).catch(() => null); }
+  let clip = null;
+  store.batch('stock', () => {
+    const main = store.mainTrack();
+    const mainClips = store.clipsOn(main.id);
+    const end = mainClips.reduce((mx, c) => Math.max(mx, c.start + c.duration), 0);
+    const atEnd = !mainClips.length || Math.abs(store.time - end) < 0.05;
+    const start = atEnd ? end : store.time;
+    const track = atEnd ? main : store.findTrackFor('video', start, start + dur);
+    clip = store.addClip({ trackId: track.id, type: 'gen', gen: { kind: id }, name: t(v.name), start, duration: dur }, { commit: false });
+    if (m) {
+      const atr = store.findTrackFor('audio', start, start + dur);
+      store.addClip({ trackId: atr.id, type: 'audio', mediaId: m.id, name: m.name, start, duration: Math.min(dur, m.duration || dur), in: 0 }, { commit: false, select: false });
+    }
+  });
+  bus.emit('selection');
+  return clip;
+}

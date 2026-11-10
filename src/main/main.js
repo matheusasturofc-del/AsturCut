@@ -537,3 +537,26 @@ ipcMain.handle('rec:save', async (_e, { name, buffer }) => {
   fs.promises.unlink(raw).catch(() => {});
   return out;
 });
+
+// ---------- Proxies: cópia leve (540p, GOP curto) para editar vídeos pesados ----------
+ipcMain.handle('proxy:make', async (e, { path: src, id }) => {
+  const dir = path.join(app.getPath('userData'), 'proxies');
+  await fs.promises.mkdir(dir, { recursive: true });
+  const out = path.join(dir, `${String(id).replace(/[^a-z0-9_-]/gi, '')}-${Date.now()}.mp4`);
+  let total = 0;
+  await new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath(), ['-y', '-i', src, '-vf', 'scale=-2:540', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26', '-g', '15', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out], { windowsHide: true });
+    let log = '';
+    proc.stderr.on('data', (d) => {
+      const s = d.toString();
+      log = (log + s).slice(-3000);
+      const dm = /Duration: (\d+):(\d+):(\d+\.\d+)/.exec(s);
+      if (dm) total = +dm[1] * 3600 + +dm[2] * 60 + +dm[3];
+      const m = /time=(\d+):(\d+):(\d+\.\d+)/.exec(s);
+      if (m && total > 0) e.sender.send('proxy:progress', { id, p: Math.min(1, (+m[1] * 3600 + +m[2] * 60 + +m[3]) / total) });
+    });
+    proc.on('error', reject);
+    proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(tr('ffmpegFail') + log.slice(-400)))));
+  });
+  return out;
+});

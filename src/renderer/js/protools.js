@@ -245,3 +245,30 @@ export function audioCrossfades(sec = 0.25) {
 }
 
 void fmtTime;
+
+// ---------- proxies ----------
+export async function createProxiesDialog(list = null) {
+  const { makeProxy, isDesktop: desk } = await import('./media.js');
+  const vids = (list || store.p.media).filter((m) => m.type === 'video' && m.path && !m.proxy);
+  if (!desk) { toast(t('Proxies funcionam no aplicativo para PC'), 'info'); return; }
+  if (!vids.length) { toast(t('Todos os vídeos já têm proxy'), 'info'); return; }
+  const bar = el('div', { class: 'progress-fill' });
+  const label = el('div', { class: 'muted small' });
+  let stop = false;
+  const m = modal({ title: t('Criando proxies'), width: 440, className: 'no-close', body: el('div', { class: 'exp-progress' }, el('div', { class: 'muted small' }, t('Cópias leves (540p) deixam a edição fluida com vídeos 4K. A exportação usa sempre o original.')), el('div', { class: 'progress' }, bar), label),
+    actions: [{ label: t('Parar'), danger: true, onClick: () => { stop = true; } }], onClose: () => { stop = true; } });
+  let ok = 0;
+  for (let i = 0; i < vids.length && !stop; i++) {
+    label.textContent = t('Vídeo {a} de {b}: {name}', { a: i + 1, b: vids.length, name: vids[i].name });
+    try { if (await makeProxy(vids[i], (p) => { bar.style.width = Math.round(((i + p) / vids.length) * 100) + '%'; })) ok++; } catch (e) { console.error(e); }
+  }
+  m.close();
+  if (ok) { store.p.settings.useProxies = true; bus.emit('proxies'); }
+  toast(t('{n} proxy(s) criado(s)', { n: ok }), ok ? 'success' : 'info');
+}
+export function toggleProxies() {
+  store.p.settings.useProxies = store.p.settings.useProxies === false;
+  import('./media.js').then((mm) => mm.refreshPlayers());
+  bus.emit('proxies');
+  toast(store.p.settings.useProxies !== false ? t('Prévia com proxies (leve)') : t('Prévia com os arquivos originais'), 'info');
+}

@@ -10,7 +10,29 @@ export const KF_PROPS = {
   rotation: { get: (c) => c.transform.rotation, set: (c, v) => (c.transform.rotation = v) },
   opacity: { get: (c) => c.transform.opacity, set: (c, v) => (c.transform.opacity = v) },
   volume: { get: (c) => c.volume ?? 1, set: (c, v) => (c.volume = v) },
+  speed: { get: (c) => c.speed || 1, set: (c, v) => (c.speed = v) },
 };
+
+// ---------- rampas de velocidade (time remapping) ----------
+// velocidade no tempo local lt (com keyframes de velocidade)
+export function speedAt(c, lt) { return hasKf(c, 'speed') ? Math.max(0.05, valueAt(c, 'speed', lt)) : (c.speed || 1); }
+// quanto da mídia já foi consumido em lt segundos de clipe (integral da velocidade)
+const rampCache = new WeakMap();
+const DT = 1 / 120;
+export function srcOffset(c, lt) {
+  if (!hasKf(c, 'speed')) return lt * (c.speed || 1);
+  const key = JSON.stringify(c.kf.speed) + '|' + c.duration;
+  let e = rampCache.get(c);
+  if (!e || e.key !== key) {
+    const n = Math.ceil(Math.max(c.duration, 0.01) / DT) + 2;
+    const cum = new Float64Array(n + 1);
+    for (let i = 1; i <= n; i++) cum[i] = cum[i - 1] + speedAt(c, (i - 0.5) * DT) * DT;
+    e = { key, cum };
+    rampCache.set(c, e);
+  }
+  const x = Math.max(0, lt) / DT, i = Math.min(e.cum.length - 2, Math.floor(x));
+  return e.cum[i] + (e.cum[i + 1] - e.cum[i]) * (x - i);
+}
 
 export const EASINGS = [
   ['linear', 'Linear'],

@@ -3,11 +3,14 @@ import { store, bus } from './store.js';
 import { t } from './i18n.js';
 import { $, el, icon, fmtShort, fmtBytes, contextMenu, toast, ease, promptDialog } from './util.js';
 import { openSource } from './source.js';
+import { removeProxy } from './media.js';
+import { createProxiesDialog } from './protools.js';
 import { runtime, importViaDialog, importDropped, BACKGROUNDS, addBackground, drawBackground, importFonts, customFonts, isDesktop, api } from './media.js';
 import { settings } from './settings.js';
-import { addMedia, addText, addSticker, addShape, applyEffect, applyFilter, applyTransition, applyAnimation, addAudio } from './actions.js';
+import { addMedia, addText, addSticker, addShape, applyEffect, applyFilter, applyTransition, applyAnimation, addAudio, addNoSignal, addStock } from './actions.js';
+import { STOCK_VIDEOS } from './lib/stock.js';
 import { TEXT_PRESETS } from './lib/textPresets.js';
-import { EMOJI_CATS, SHAPES, drawShape } from './lib/stickers.js';
+import { EMOJI_CATS, SHAPES, ARROWS, drawShape } from './lib/stickers.js';
 import { EFFECTS, EFFECT_CATS } from './lib/effects.js';
 import { FILTERS, FILTER_CATS, filterPreviewCss } from './lib/filters.js';
 import { TRANSITIONS, TRANSITION_CATS } from './lib/transitions.js';
@@ -65,10 +68,10 @@ export function openTab(id, subId = null) {
 
 function navDefs() {
   switch (tab) {
-    case 'media': return [['import', 'Importar'], ['backgrounds', 'Fundos'], ['generate', 'Criar']];
+    case 'media': return [['import', 'Importar'], ['stock', 'Banco de mídia'], ['backgrounds', 'Fundos'], ['generate', 'Criar']];
     case 'audio': return [['music', 'Músicas'], ...[...new Set(SFX.map((s) => s.cat))].map((c) => ['sfx:' + c, c]), ['mine', 'Meus áudios']];
     case 'text': return [['all', 'Todos'], ...[...new Set(TEXT_PRESETS.map((p) => p.cat))].map((c) => [c, c])];
-    case 'stickers': return [...Object.keys(EMOJI_CATS).map((c) => [c, c]), ['shapes', 'Formas']];
+    case 'stickers': return [['arrows', 'Setas (vetor)'], ...Object.keys(EMOJI_CATS).map((c) => [c, c]), ['shapes', 'Formas']];
     case 'effects': return [['all', 'Todos'], ...EFFECT_CATS.map((c) => [c, c])];
     case 'transitions': return [['all', 'Todas'], ...TRANSITION_CATS.map((c) => [c, c])];
     case 'filters': return [['all', 'Todos'], ...FILTER_CATS.map((c) => [c, c])];
@@ -134,6 +137,28 @@ function renderMedia() {
       drawBackground(c.getContext('2d'), b, 160, 90);
       const add = async () => { const m = await addBackground(b.id); addMedia(m); };
       grid.append(tile({ title: b.label ? t(b.label[0], { c: b.label[1] }) : b.name, thumb: c, onAdd: add }));
+    }
+    content.append(grid);
+    return;
+  }
+  if (s === 'stock') {
+    content.append(el('div', { class: 'lib-hint' }, 'Vídeos e imagens prontos e livres (chuvisco de TV, barras, contagens, telas e fundos animados). Clique em + para adicionar.'));
+    const cats = [...new Set(STOCK_VIDEOS.map((v) => v.cat))];
+    for (const cat of cats) {
+      content.append(el('div', { class: 'lib-sep' }, el('span', {}, cat)));
+      const grid = el('div', { class: 'grid' });
+      for (const v of STOCK_VIDEOS.filter((x) => x.cat === cat)) {
+        const prev = animatedPreview((x, tt) => { try { v.draw(x, 192, 108, tt % (v.dur || 5)); } catch {} });
+        grid.append(tile({ title: v.name + (v.sfx ? ' 🔊' : ''), thumb: prev, onAdd: () => addStock(v.id), onClick: (e) => { if (e.detail === 2) addStock(v.id); } }));
+      }
+      content.append(grid);
+    }
+    content.append(el('div', { class: 'lib-sep' }, el('span', {}, 'Imagens')));
+    const grid = el('div', { class: 'grid' });
+    for (const b of BACKGROUNDS) {
+      const c = el('canvas', { width: 160, height: 90 });
+      drawBackground(c.getContext('2d'), b, 160, 90);
+      grid.append(tile({ title: b.label ? t(b.label[0], { c: b.label[1] }) : b.name, thumb: c, onAdd: async () => { const m = await addBackground(b.id); addMedia(m); } }));
     }
     content.append(grid);
     return;
@@ -222,6 +247,7 @@ function renderMedia() {
       { label: 'Adicionar no cursor', onClick: () => addMedia(m, { t: store.time, trackId: null, newzone: 'top' }) },
       m.type !== 'image' ? { label: 'Abrir no visualizador de origem', onClick: () => openSource(m) } : null,
       { label: 'Mover para pasta', submenu: [{ label: t('Mídia') + ' (raiz)', onClick: () => { delete m.binId; store.dirty = true; renderContent(); } }, ...store.p.bins.map((b) => ({ label: b.name, checked: m.binId === b.id, onClick: () => { m.binId = b.id; store.dirty = true; renderContent(); } })), '-', { label: t('Nova pasta...'), onClick: () => newBin(m) }] },
+      isDesktop && !api.isMobile && m.type === 'video' && m.path ? (m.proxy ? { label: 'Remover proxy', onClick: () => removeProxy(m) } : { label: 'Criar proxy (edição leve)', onClick: () => createProxiesDialog([m]) }) : null,
       isDesktop && !api.isMobile && m.path ? { label: 'Mostrar na pasta', onClick: () => api.showItem(m.path) } : null,
       '-',
       { label: t('Informações: {info}', { info: `${m.width ? m.width + '×' + m.height + ' · ' : ''}${fmtBytes(m.size)}` }), disabled: true },
@@ -349,9 +375,9 @@ function renderText() {
 // ---------- Stickers ----------
 function renderStickers() {
   const s = sub.stickers;
-  if (s === 'shapes') {
+  if (s === 'shapes' || s === 'arrows') {
     const grid = el('div', { class: 'grid' });
-    for (const sh of SHAPES) {
+    for (const sh of (s === 'arrows' ? ARROWS : SHAPES)) {
       const c = el('canvas', { width: 160, height: 90 });
       const x = c.getContext('2d');
       x.translate(80, 45);
@@ -400,6 +426,12 @@ function renderEffects() {
   content.append(el('div', { class: 'lib-hint' }, sel && ['video', 'image', 'text', 'sticker', 'shape'].includes(sel.type) ? 'Clique para aplicar ao clipe selecionado. Arraste para a linha do tempo para criar uma camada de efeito.' : 'Clique em + para adicionar como camada na linha do tempo, ou arraste sobre um clipe.'));
   content.append(searchBox('Buscar efeitos...'));
   const grid = el('div', { class: 'grid' });
+  if (sub.effects === 'all' || sub.effects === 'Retrô') {
+    // atalho: tela de TV fora do ar com chiado
+    const tvFx = EFFECTS.find((e) => e.id === 'tvstatic');
+    const prevTv = animatedPreview((x, t) => { x.fillStyle = '#000'; x.fillRect(0, 0, 192, 108); tvFx.post(x, 192, 108, t, 1, 0.1); });
+    grid.append(tile({ title: t('Sem sinal (chuvisco + chiado)'), thumb: prevTv, onAdd: () => addNoSignal(), onClick: (e) => { if (e.detail === 1) addNoSignal(); } }));
+  }
   for (const fx of EFFECTS.filter((e) => (sub.effects === 'all' || e.cat === sub.effects) && match(e.name))) {
     const prev = animatedPreview((x, t) => {
       const W = 192, H = 108, S = 0.1;

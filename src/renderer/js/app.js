@@ -24,7 +24,7 @@ import { openMixer } from './audiomix.js';
 import { openRecorder } from './recorder.js';
 import { openCaptionsDialog } from './captions.js';
 import { removeSilencesDialog } from './silence.js';
-import { freezeFrame, openHistory, detectScenes, autoDuckDialog, audioCrossfades } from './protools.js';
+import { freezeFrame, openHistory, detectScenes, autoDuckDialog, audioCrossfades, createProxiesDialog, toggleProxies } from './protools.js';
 import { toggleScopes } from './color.js';
 import { openExportQueue } from './exporter.js';
 
@@ -95,6 +95,9 @@ function mainMenu(anchor) {
       { label: t('Crossfade de áudio nas emendas'), onClick: () => audioCrossfades() },
       '-',
       isDesktop && !isMobile ? { label: t('Fila de exportação...'), onClick: () => openExportQueue() } : null,
+      isDesktop && !isMobile ? '-' : null,
+      isDesktop && !isMobile ? { label: t('Criar proxies dos vídeos (edição leve)...'), onClick: () => createProxiesDialog() } : null,
+      isDesktop && !isMobile ? { label: t('Usar proxies na prévia'), checked: store.p.settings.useProxies !== false, onClick: () => toggleProxies() } : null,
     ].filter(Boolean) },
     { label: t('Maximizar painel sob o mouse'), shortcut: '`', onClick: () => toggleMaximize() },
     '-',

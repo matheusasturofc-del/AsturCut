@@ -6,7 +6,7 @@ import { fastSupported, fastExport, clearDecoded } from './fastExport.js';
 import { prepareKeying } from './keying.js';
 import { renderFrame } from './compositor.js';
 import { player, pause, syncMedia, draw } from './player.js';
-import { allPlayers, exportAudioStream, audioCtx, isDesktop, isMobile, api } from './media.js';
+import { allPlayers, exportAudioStream, audioCtx, isDesktop, isMobile, api, setProxyBypass } from './media.js';
 import { settings } from './settings.js';
 
 const RES = [[480, '480p'], [720, '720p'], [1080, '1080p'], [1440, '2K'], [2160, '4K']];
@@ -157,7 +157,12 @@ async function startExport(o) {
     outPath = await api.exportChoose({ name: o.name, format: o.format });
     if (!outPath) return;
   }
+  setProxyBypass(true); // exporta sempre com as mídias originais
   try { await prepareKeying(store.p.clips); } catch { toast(t('Não foi possível carregar a IA de recorte'), 'error'); }
+  try { return await runExport(o, outPath); } finally { setProxyBypass(false); }
+}
+
+async function runExport(o, outPath) {
   audioCtx();
   const canvas = document.createElement('canvas');
   canvas.width = o.W; canvas.height = o.H;

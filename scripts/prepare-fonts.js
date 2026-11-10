@@ -16,6 +16,17 @@ const CATEGORY = {
   'great-vibes': 'Manuscritas', sacramento: 'Manuscritas', orbitron: 'Tech', 'press-start-2p': 'Tech', audiowide: 'Tech',
   'chakra-petch': 'Tech', 'black-ops-one': 'Tech', monoton: 'Tech', righteous: 'Tech', rajdhani: 'Tech',
   'source-code-pro': 'Tech', 'playfair-display': 'Elegantes', merriweather: 'Elegantes', cinzel: 'Elegantes',
+  // 1.5: +50 fontes
+  'lilita-one': 'Títulos', 'bowlby-one': 'Títulos', ultra: 'Títulos', 'dela-gothic-one': 'Títulos', 'big-shoulders-display': 'Títulos', 'league-spartan': 'Títulos',
+  'saira-condensed': 'Títulos', 'black-han-sans': 'Títulos', 'rubik-mono-one': 'Títulos', 'fugaz-one': 'Títulos', shrikhand: 'Títulos',
+  'baloo-2': 'Divertidas', chewy: 'Divertidas', sniglet: 'Divertidas', 'concert-one': 'Divertidas', 'bungee-shade': 'Divertidas', 'bungee-inline': 'Divertidas',
+  'rubik-glitch': 'Divertidas', nosifer: 'Divertidas', 'metal-mania': 'Divertidas', 'faster-one': 'Divertidas',
+  kalam: 'Manuscritas', 'patrick-hand': 'Manuscritas', 'indie-flower': 'Manuscritas', 'amatic-sc': 'Manuscritas', 'gloria-hallelujah': 'Manuscritas', 'rock-salt': 'Manuscritas',
+  'homemade-apple': 'Manuscritas', 'kaushan-script': 'Manuscritas', yellowtail: 'Manuscritas', 'alex-brush': 'Manuscritas', parisienne: 'Manuscritas', tangerine: 'Manuscritas',
+  courgette: 'Manuscritas', playball: 'Manuscritas',
+  'special-elite': 'Tech', vt323: 'Tech', silkscreen: 'Tech', 'exo-2': 'Tech', 'space-grotesk': 'Modernas',
+  'dm-sans': 'Modernas', sora: 'Modernas', outfit: 'Modernas', manrope: 'Modernas', archivo: 'Modernas', barlow: 'Modernas', 'josefin-sans': 'Modernas',
+  'yeseva-one': 'Elegantes', 'cormorant-garamond': 'Elegantes', 'dm-serif-display': 'Elegantes', 'libre-baskerville': 'Elegantes', lora: 'Elegantes', bitter: 'Elegantes', 'zilla-slab': 'Elegantes',
 };
 
 if (!fs.existsSync(pkgDir)) {

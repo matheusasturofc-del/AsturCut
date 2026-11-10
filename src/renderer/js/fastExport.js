@@ -6,7 +6,7 @@ import { clamp } from './util.js';
 import { renderFrame } from './compositor.js';
 import { player, syncMedia } from './player.js';
 import { allPlayers, masterGain, mediaUrl, api } from './media.js';
-import { valueAt } from './keyframes.js';
+import { valueAt, hasKf, speedAt, srcOffset } from './keyframes.js';
 import { trackAudio, GATE_CODE } from './audiomix.js';
 
 const SR = 48000;
@@ -23,7 +23,7 @@ export async function decodeMedia(m) {
   if (decoded.has(m.id)) return decoded.get(m.id);
   let buf = null;
   try {
-    const data = await (await fetch(mediaUrl(m))).arrayBuffer();
+    const data = await (await fetch(mediaUrl(m, true))).arrayBuffer();
     buf = await new OfflineAudioContext(2, 1, SR).decodeAudioData(data);
   } catch { buf = null; }
   decoded.set(m.id, buf);
@@ -85,13 +85,20 @@ export async function renderAudioOffline(start, dur, onProgress, { sampleRate = 
     if (t1 <= t0) continue;
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.playbackRate.value = spd;
+    const ramp = hasKf(c, 'speed');
+    src.playbackRate.value = ramp ? speedAt(c, t0 - c.start) : spd;
     const g = ctx.createGain();
     src.connect(g).connect(buses.get(tr.id).input);
     const when = t0 - start;
-    const srcOffset = (c.in || 0) + (t0 - c.start) * spd;
-    if (srcOffset >= buf.duration) continue;
-    src.start(when, srcOffset, (t1 - t0) * spd);
+    const srcOff = (c.in || 0) + srcOffset(c, t0 - c.start);
+    if (srcOff >= buf.duration) continue;
+    src.start(when, srcOff, Math.max(0.01, srcOffset(c, t1 - c.start) - srcOffset(c, t0 - c.start)));
+    if (ramp) {
+      // rampa de velocidade: automatiza a taxa de reprodução
+      const n = Math.max(2, Math.ceil((t1 - t0) * 50)), rc = new Float32Array(n);
+      for (let k = 0; k < n; k++) rc[k] = speedAt(c, (t0 - c.start) + (k / (n - 1)) * (t1 - t0));
+      try { src.playbackRate.setValueCurveAtTime(rc, when, Math.max(0.01, t1 - t0)); } catch {}
+    }
     // volume (keyframes + fades) amostrado a cada 20 ms
     const steps = Math.max(2, Math.ceil((t1 - t0) * 50));
     const curve = new Float32Array(steps);
@@ -136,7 +143,7 @@ function avcCodec(W, H) {
 // tempo da linha do tempo segundo o vídeo que está tocando agora
 function videoClock(t) {
   for (const c of store.p.clips) {
-    if (c.type !== 'video' || t < c.start || t >= c.start + c.duration) continue;
+    if (c.type !== 'video' || c.freeze || hasKf(c, 'speed') || t < c.start || t >= c.start + c.duration) continue;
     const p = allPlayers().get(c.id);
     if (!p || p.el.paused || p.seeking || p.el.readyState < 2) continue;
     return c.start + (p.el.currentTime - (c.in || 0)) / (c.speed || 1);

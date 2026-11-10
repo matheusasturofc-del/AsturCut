@@ -59,7 +59,45 @@ function pad(ctx, notes, t0, dur, gain, dest, type = 'triangle', cutoff = 1800) 
   }
 }
 
+// chiado de TV fora do ar: ruído branco contínuo (com estalos), sem fade longo
+function tvHiss(c, d, dur) {
+  const s = c.createBufferSource();
+  s.buffer = noiseBuffer(c, dur + 0.1);
+  const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 180;
+  const pk = c.createBiquadFilter(); pk.type = 'peaking'; pk.frequency.value = 4200; pk.gain.value = 5; pk.Q.value = 0.7;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, 0); g.gain.linearRampToValueAtTime(0.42, 0.04);
+  g.gain.setValueAtTime(0.42, dur - 0.15); g.gain.linearRampToValueAtTime(0.0001, dur);
+  s.connect(hp).connect(pk).connect(g).connect(d);
+  s.start(0); s.stop(dur + 0.05);
+  for (let i = 0; i < dur * 9; i++) { const t0 = (i * 0.618 % 1) * dur; noise(c, t0, 0.02, 0.35, d, 'highpass', 2500); }
+}
+
 export const SFX = [
+  { id: 'tvstatic', name: 'Chiado de TV (sem sinal)', cat: 'Ruído', dur: 4, gen: (c, d) => tvHiss(c, d, 4) },
+  { id: 'tone1k', name: 'Bipe de teste 1 kHz (TV)', cat: 'Ruído', dur: 10, gen: (c, d) => { const o = c.createOscillator(); o.frequency.value = 1000; const g = c.createGain(); g.gain.setValueAtTime(0, 0); g.gain.linearRampToValueAtTime(0.25, 0.02); g.gain.setValueAtTime(0.25, 9.9); g.gain.linearRampToValueAtTime(0, 10); o.connect(g).connect(d); o.start(0); o.stop(10); } },
+  { id: 'countBeeps10', name: 'Bipes de contagem (10)', cat: 'Alertas', dur: 10, gen: (c, d) => { for (let i = 0; i < 10; i++) osc(c, 'sine', i === 9 ? 1320 : 880, i, 0.12, 0.35, d); } },
+  { id: 'countBeeps3', name: 'Bipes 3-2-1', cat: 'Alertas', dur: 3.4, gen: (c, d) => { for (let i = 0; i < 3; i++) osc(c, 'sine', 880, i, 0.14, 0.4, d); osc(c, 'sine', 1760, 3, 0.35, 0.4, d); } },
+  { id: 'ding', name: 'Notificação (ding)', cat: 'Alertas', dur: 1.2, gen: (c, d) => { osc(c, 'sine', 1318, 0, 1, 0.4, d); osc(c, 'sine', 1975, 0.08, 0.9, 0.25, d); } },
+  { id: 'bellDesk', name: 'Sineta de balcão', cat: 'Alertas', dur: 1.6, gen: (c, d) => { [2093, 2637, 3136].forEach((f, i) => osc(c, 'triangle', f, 0, 1.4, 0.25 / (i + 1), d)); } },
+  { id: 'alarm', name: 'Alarme', cat: 'Alertas', dur: 2.4, gen: (c, d) => { for (let i = 0; i < 6; i++) osc(c, 'square', i % 2 ? 660 : 880, i * 0.4, 0.3, 0.18, d); } },
+  { id: 'phone', name: 'Telefone tocando', cat: 'Objetos', dur: 3, gen: (c, d) => { for (let r = 0; r < 2; r++) for (let i = 0; i < 20; i++) { osc(c, 'sine', 440, r * 1.5 + i * 0.05, 0.04, 0.2, d); osc(c, 'sine', 480, r * 1.5 + i * 0.05, 0.04, 0.2, d); } } },
+  { id: 'clock', name: 'Relógio (tique-taque)', cat: 'Objetos', dur: 4, gen: (c, d) => { for (let i = 0; i < 8; i++) noise(c, i * 0.5, 0.03, 0.5, d, 'bandpass', i % 2 ? 2500 : 3500, 8); } },
+  { id: 'shutter', name: 'Câmera (clique)', cat: 'Objetos', dur: 0.5, gen: (c, d) => { noise(c, 0, 0.04, 0.8, d, 'highpass', 2000); noise(c, 0.09, 0.05, 0.6, d, 'bandpass', 1500, 2); } },
+  { id: 'typing', name: 'Digitando no teclado', cat: 'Objetos', dur: 3, gen: (c, d) => { for (let i = 0; i < 22; i++) noise(c, i * 0.13 + (i % 3) * 0.02, 0.03, 0.4, d, 'bandpass', 1800 + (i % 5) * 300, 4); } },
+  { id: 'knock', name: 'Batida na porta', cat: 'Objetos', dur: 1.4, gen: (c, d) => { [0, 0.22, 0.44].forEach((t0) => { osc(c, 'sine', 120, t0, 0.12, 0.7, d, 60); noise(c, t0, 0.05, 0.4, d, 'lowpass', 800); }); } },
+  { id: 'drumroll', name: 'Rufar de tambor', cat: 'Batidas', dur: 3, gen: (c, d) => { for (let i = 0; i < 60; i++) noise(c, i * 0.045, 0.06, 0.15 + i / 200, d, 'bandpass', 900, 1.5); noise(c, 2.75, 0.3, 0.8, d, 'highpass', 3000); osc(c, 'sine', 90, 2.75, 0.4, 0.8, d, 50); } },
+  { id: 'boing', name: 'Boing (desenho)', cat: 'Desenho', dur: 1, gen: (c, d) => { osc(c, 'sine', 180, 0, 0.8, 0.5, d, 520); } },
+  { id: 'popCartoon', name: 'Pop (desenho)', cat: 'Desenho', dur: 0.4, gen: (c, d) => { osc(c, 'sine', 400, 0, 0.12, 0.6, d, 1400); } },
+  { id: 'slideWhistle', name: 'Apito descendo', cat: 'Desenho', dur: 1.4, gen: (c, d) => { osc(c, 'sine', 1800, 0, 1.2, 0.35, d, 300); } },
+  { id: 'fail', name: 'Errou (trombone triste)', cat: 'Desenho', dur: 2.4, gen: (c, d) => { [392, 370, 349, 330].forEach((f, i) => osc(c, 'sawtooth', f, i * 0.5, i === 3 ? 0.9 : 0.42, 0.18, d, i === 3 ? 300 : null)); } },
+  { id: 'rain', name: 'Chuva', cat: 'Natureza', dur: 8, gen: (c, d) => { const s = c.createBufferSource(); s.buffer = noiseBuffer(c, 8.1); const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2500; f.Q.value = 0.3; const g = c.createGain(); g.gain.setValueAtTime(0, 0); g.gain.linearRampToValueAtTime(0.35, 0.5); g.gain.setValueAtTime(0.35, 7.5); g.gain.linearRampToValueAtTime(0, 8); s.connect(f).connect(g).connect(d); s.start(0); for (let i = 0; i < 60; i++) noise(c, (i * 0.618 % 1) * 8, 0.015, 0.12, d, 'highpass', 4000); } },
+  { id: 'wind', name: 'Vento', cat: 'Natureza', dur: 8, gen: (c, d) => { const s = c.createBufferSource(); s.buffer = noiseBuffer(c, 8.1); const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 2; f.frequency.setValueAtTime(300, 0); f.frequency.linearRampToValueAtTime(900, 3); f.frequency.linearRampToValueAtTime(400, 6); f.frequency.linearRampToValueAtTime(700, 8); const g = c.createGain(); g.gain.setValueAtTime(0, 0); g.gain.linearRampToValueAtTime(0.5, 1.5); g.gain.setValueAtTime(0.5, 7); g.gain.linearRampToValueAtTime(0, 8); s.connect(f).connect(g).connect(d); s.start(0); } },
+  { id: 'waves', name: 'Ondas do mar', cat: 'Natureza', dur: 8, gen: (c, d) => { const s = c.createBufferSource(); s.buffer = noiseBuffer(c, 8.1); const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1200; const g = c.createGain(); g.gain.setValueAtTime(0.02, 0); for (let i = 0; i < 4; i++) { g.gain.linearRampToValueAtTime(0.5, i * 2 + 1); g.gain.linearRampToValueAtTime(0.05, i * 2 + 2); } s.connect(f).connect(g).connect(d); s.start(0); } },
+  { id: 'heartbeatS', name: 'Coração batendo', cat: 'Natureza', dur: 4, gen: (c, d) => { for (let i = 0; i < 4; i++) { osc(c, 'sine', 60, i, 0.15, 0.9, d, 40); osc(c, 'sine', 55, i + 0.25, 0.12, 0.6, d, 40); } } },
+  { id: 'applause', name: 'Aplausos', cat: 'Plateia', dur: 4, gen: (c, d) => { for (let i = 0; i < 160; i++) noise(c, (i * 0.618 % 1) * 3.6, 0.025, 0.08 + 0.1 * Math.sin((i * 0.618 % 1) * Math.PI), d, 'bandpass', 1200 + (i % 7) * 250, 2); } },
+  { id: 'laser', name: 'Laser', cat: 'Games', dur: 0.6, gen: (c, d) => { osc(c, 'square', 1800, 0, 0.35, 0.25, d, 200); } },
+  { id: 'tvstatic10', name: 'Chiado de TV longo (10 s)', cat: 'Ruído', dur: 10, gen: (c, d) => tvHiss(c, d, 10) },
   { id: 'whoosh', name: 'Whoosh', cat: 'Transição', dur: 0.9, gen: (c, d) => noise(c, 0, 0.8, 0.6, d, 'bandpass', 300, 2, 4000) },
   { id: 'swoosh', name: 'Swoosh reverso', cat: 'Transição', dur: 0.9, gen: (c, d) => noise(c, 0, 0.8, 0.6, d, 'bandpass', 5000, 2, 200) },
   { id: 'riser', name: 'Riser (subida)', cat: 'Transição', dur: 3.2, gen: (c, d) => {

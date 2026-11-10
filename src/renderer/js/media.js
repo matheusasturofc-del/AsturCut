@@ -24,12 +24,28 @@ export function typeFromExt(ext) {
 export const runtime = new Map(); // mediaId -> { url, thumb, frames, peaks, img, ready }
 const blobFiles = new Map(); // mediaId -> File (modo navegador)
 
-export function mediaUrl(m) {
+export function mediaUrl(m, original = false) {
   const r = runtime.get(m.id);
   if (r && r.url) return r.url;
-  if (m.path && isDesktop) return api.mediaUrl(m.path);
+  if (m.path && isDesktop) return api.mediaUrl(!original && m.proxy && proxyActive() ? m.proxy : m.path);
   return null;
 }
+
+// ---------- Proxies: cópias leves (540p) para editar vídeos pesados; a exportação usa o original ----------
+let proxyBypass = false;
+export function proxyActive() { return store.p.settings?.useProxies !== false && !proxyBypass; }
+export function refreshPlayers() { for (const id of [...pool.keys()]) releasePlayer(id); bus.emit('frame-ready'); }
+export function setProxyBypass(v) { if (proxyBypass === v) return; proxyBypass = v; if (store.p.media.some((m) => m.proxy)) refreshPlayers(); }
+export async function makeProxy(m, onProgress) {
+  if (!isDesktop || !api.proxyMake || !m.path || m.type !== 'video') return null;
+  const off = api.on('proxy:progress', (d) => { if (d.id === m.id && onProgress) onProgress(d.p); });
+  try {
+    const out = await api.proxyMake({ path: m.path, id: m.id });
+    if (out) { m.proxy = out; store.dirty = true; refreshPlayers(); bus.emit('media'); }
+    return out;
+  } finally { off(); }
+}
+export function removeProxy(m) { delete m.proxy; store.dirty = true; refreshPlayers(); bus.emit('media'); }
 
 // ---------- Áudio (Web Audio) ----------
 let actx = null, master = null, exportDest = null;
@@ -141,6 +157,11 @@ export async function restoreProjectMedia() {
     } else if (!m.path && !m.genImg) missing.push(m);
   }
   await restoreGenerated();
+  const withProxy = store.p.media.filter((m) => m.proxy);
+  if (withProxy.length && api?.describeFiles) {
+    const ok = new Set((await api.describeFiles(withProxy.map((m) => m.proxy)).catch(() => [])).map((f) => f.path));
+    for (const m of withProxy) if (!ok.has(m.proxy)) delete m.proxy;
+  }
   bus.emit('media');
   for (const m of store.p.media) { if (m.genImg) continue; probe(m).then(() => analyze(m)).catch(() => { m.missing = true; bus.emit('media'); }); }
   for (const f of store.p.fonts || []) loadCustomFont(f).catch(() => {});
@@ -148,7 +169,7 @@ export async function restoreProjectMedia() {
 }
 
 function loadEl(m) {
-  const url = mediaUrl(m);
+  const url = mediaUrl(m, true);
   return new Promise((resolve, reject) => {
     if (!url) return reject(new Error('sem url'));
     if (m.type === 'image') {
@@ -356,6 +377,11 @@ export { audioDef };
 // ---------- Imagens geradas (fundos grátis da biblioteca) ----------
 export const BACKGROUNDS = [
   ...['#000000', '#ffffff', '#1ccfdc', '#ff2d55', '#ffcc00', '#34c759', '#5856d6', '#ff9500', '#1c1c1e', '#8e8e93', '#ff6fa8', '#0a84ff'].map((c) => ({ id: 'solid:' + c, name: 'Cor ' + c, label: ['Cor {c}', c], kind: 'solid', colors: [c] })),
+  { id: 'solid:#00b140', name: 'Tela verde (chroma key)', kind: 'solid', colors: ['#00b140'] },
+  { id: 'solid:#0047bb', name: 'Tela azul (chroma key)', kind: 'solid', colors: ['#0047bb'] },
+  { id: 'solid:#808080', name: 'Cinza médio', kind: 'solid', colors: ['#808080'] },
+  { id: 'checker:#ffffff:#cccccc', name: 'Xadrez', kind: 'checker', colors: ['#ffffff', '#cccccc'] },
+  { id: 'bars:', name: 'Barras de cor (imagem)', kind: 'bars', colors: [] },
   { id: 'grad:#ff512f:#dd2476', name: 'Gradiente Fogo', kind: 'grad', colors: ['#ff512f', '#dd2476'] },
   { id: 'grad:#1ccfdc:#5b2bff', name: 'Gradiente Astur', kind: 'grad', colors: ['#1ccfdc', '#5b2bff'] },
   { id: 'grad:#f7971e:#ffd200', name: 'Gradiente Sol', kind: 'grad', colors: ['#f7971e', '#ffd200'] },
@@ -380,6 +406,8 @@ export function drawBackground(ctx, spec, W, H) {
   else if (spec.kind === 'stripes') { ctx.fillStyle = a; ctx.fillRect(0, 0, W, H); ctx.fillStyle = b; for (let x = -H; x < W; x += W / 12) { ctx.beginPath(); ctx.moveTo(x, H); ctx.lineTo(x + H, 0); ctx.lineTo(x + H + W / 24, 0); ctx.lineTo(x + W / 24, H); ctx.fill(); } }
   else if (spec.kind === 'dots') { ctx.fillStyle = a; ctx.fillRect(0, 0, W, H); ctx.fillStyle = b; ctx.globalAlpha = 0.5; const s = W / 24; for (let y = s / 2; y < H; y += s) for (let x = s / 2; x < W; x += s) { ctx.beginPath(); ctx.arc(x, y, s * 0.12, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; }
   else if (spec.kind === 'grid') { ctx.fillStyle = a; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = b; ctx.globalAlpha = 0.35; ctx.lineWidth = Math.max(1, W / 960); const s = W / 20; for (let x = 0; x < W; x += s) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); } for (let y = 0; y < H; y += s) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); } ctx.globalAlpha = 1; }
+  else if (spec.kind === 'checker') { const s = W / 32; for (let y = 0; y < H; y += s) for (let x = 0; x < W; x += s) { ctx.fillStyle = ((x + y) / s) % 2 ? b : a; ctx.fillRect(x, y, s, s); } }
+  else if (spec.kind === 'bars') { const cols = ['#c0c0c0', '#c0c000', '#00c0c0', '#00c000', '#c000c0', '#c00000', '#0000c0']; cols.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(i * W / 7, 0, W / 7 + 1, H * 0.75); }); ctx.fillStyle = '#131313'; ctx.fillRect(0, H * 0.75, W, H * 0.25); ctx.fillStyle = '#fff'; ctx.fillRect(W * 0.2, H * 0.78, W * 0.15, H * 0.2); }
   else if (spec.kind === 'sunset') {
     const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2b1055'); g.addColorStop(0.55, '#d53369'); g.addColorStop(1, '#fbb03b'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = '#ffd56b'; ctx.beginPath(); ctx.arc(W * 0.5, H * 0.62, H * 0.18, 0, Math.PI * 2); ctx.fill();
