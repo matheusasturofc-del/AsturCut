@@ -26,7 +26,7 @@ import { openCaptionsDialog } from './captions.js';
 import { removeSilencesDialog } from './silence.js';
 import { stabilize, autoReframeDialog } from './analysis.js';
 import { newSequence, nestSelection } from './sequences.js';
-import { exportFrame, exportSrt, importSrt, chaptersDialog, splitLayoutDialog, reverseClip, beatsDialog, normalizeDialog, colorMatchSelected, ttsDialog } from './extras.js';
+import { exportFrame, exportSrt, importSrt, chaptersDialog, splitLayoutDialog, reverseClip, beatsDialog, normalizeDialog, colorMatchSelected, ttsDialog, closeAllGaps, autoEnhance } from './extras.js';
 import { multicamDialog, openMulticamMonitor } from './multicam.js';
 import { freezeFrame, openHistory, detectScenes, autoDuckDialog, audioCrossfades, createProxiesDialog, toggleProxies } from './protools.js';
 import { toggleScopes } from './color.js';
@@ -106,6 +106,8 @@ function mainMenu(anchor) {
       { label: t('Reenquadrar automaticamente...'), onClick: () => autoReframeDialog() },
       '-',
       { label: t('Tela dividida / layouts...'), onClick: () => splitLayoutDialog() },
+      { label: t('Ajuste automático de cor'), onClick: () => autoEnhance() },
+      { label: t('Fechar todos os espaços vazios'), onClick: () => closeAllGaps() },
       { label: t('Inverter clipe (de trás para frente)'), shortcut: 'Ctrl+Alt+R', onClick: () => reverseClip() },
       { label: t('Igualar cor (2 clipes selecionados)'), onClick: () => colorMatchSelected() },
       { label: t('Batidas da música / cortar no ritmo...'), onClick: () => beatsDialog() },

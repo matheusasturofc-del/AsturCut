@@ -251,7 +251,7 @@ function contentSize(clip, W, H, S, ctx) {
 }
 
 function mediaSource(clip, lt) {
-  if (clip.type === 'image') return imageFor(clip.mediaId);
+  if (clip.type === 'image') return imageFor(clip.mediaId, Math.max(0, lt) * (clip.speed || 1));
   if (clip.type === 'video') {
     const p = getPlayer(clip, CUR.prefix + clip.id);
     if (!p || p.el.readyState < 2) return null;

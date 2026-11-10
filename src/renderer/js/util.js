@@ -247,6 +247,7 @@ const P = {
   next: '<path d="M18 5v14M5 5l10 7-10 7z"/>',
   undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
   redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>',
+  closeGaps: '<path d="M2 12h6M16 12h6"/><path d="M5 8l4 4-4 4M19 8l-4 4 4 4"/><path d="M12 4v16" stroke-dasharray="2 2"/>',
   split: '<path d="M12 3v18"/><path d="M8 7l-4 5 4 5M16 7l4 5-4 5"/>',
   splitL: '<path d="M14 3v18"/><path d="M4 8h6v8H4z"/><path d="M5 9l4 6M9 9l-4 6"/>',
   splitR: '<path d="M10 3v18"/><path d="M14 8h6v8h-6z"/><path d="M15 9l4 6M19 9l-4 6"/>',

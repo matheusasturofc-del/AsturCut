@@ -63,9 +63,22 @@ Para atualizar, é só abrir o instalador novo. Ele instala por cima e mantém s
 1. Mude a versão em `package.json` (por exemplo, `1.3.0`), faça o commit e envie.
 2. No GitHub, abra **Actions → Gerar instalador → Run workflow**, deixe marcado **"Publicar uma Release"** e clique em **Run workflow**.
 
-Em poucos minutos sai a **Release** `v1.5.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.5.0` também funciona.
+Em poucos minutos sai a **Release** `v1.6.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.6.0` também funciona.
 
 ## Recursos
+
+**Novidades da 1.6**
+- **Efeitos de voz** (esquilo, robô, monstro, eco, catedral, telefone, megafone...) e **Melhorar voz** (voz limpa, locutor, podcast)
+- **Texto para fala**: transforma texto em narração com as vozes do computador
+- **HSL por cor**: mude só o vermelho, só o azul... (céu mais azul, pele mais natural)
+- **Censura**: desfocar ou pixelar uma área (rosto, placa) — e rastrear o movimento; máscaras em coração, estrela, hexágono...
+- **Tela dividida / layouts** (lado a lado, grade 2×2, picture-in-picture...)
+- **Batidas da música**: marca as batidas e **corta os clipes no ritmo**
+- **Normalizar volume** (LUFS para YouTube, podcast, TV), **igualar cor** entre clipes e **ajuste automático**
+- **Inverter clipe** (de trás para frente), **GIFs animados**, **créditos rolando** e letreiro de notícias
+- **Exportar quadro como PNG**, **legendas .srt** (importar/exportar), **capítulos do YouTube** a partir dos marcadores
+- **Substituir/reconectar mídia**, **coletar arquivos** (copia projeto + mídia para uma pasta), **fechar todos os espaços vazios**
+- Mais curvas de velocidade: herói, bullet time, salto, flash in/out
 
 **Novidades da 1.5 — tudo que faltava do Premiere**
 - **Várias sequências no mesmo projeto** (abas acima da linha do tempo) e **sequências aninhadas**: selecione clipes → botão direito → *Aninhar*; duplo clique abre a sequência

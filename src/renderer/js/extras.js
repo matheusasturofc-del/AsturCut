@@ -460,3 +460,45 @@ async function runTts(text, voice, rate, src) {
   } catch (e) { console.error(e); toast(t('Não foi possível gerar a fala: {m}', { m: String(e.message || e).slice(0, 140) }), 'error', 5000); }
   finally { tst.remove(); }
 }
+
+// ---------- ajuste automático (cor) ----------
+export async function autoEnhance(c = store.primarySelected()) {
+  if (!c || (c.type !== 'video' && c.type !== 'image')) { toast(t('Selecione um vídeo ou foto'), 'error'); return; }
+  const s = await frameStats(c);
+  if (!s) { toast(t('Não foi possível ler o quadro'), 'error'); return; }
+  const sum = Math.max(1, s.r + s.g + s.b);
+  store.batch('auto-enhance', () => {
+    const ad = c.adjust;
+    ad.brightness = Math.round(clamp((118 / Math.max(10, s.mean) - 1) * 200 * 0.6, -40, 40));
+    ad.contrast = Math.round(clamp((56 / Math.max(5, s.sd) - 1) * 100 * 0.5, -25, 35));
+    ad.saturation = Math.round(clamp(s.chroma < 70 ? (70 / Math.max(10, s.chroma) - 1) * 40 : 0, 0, 30));
+    ad.temperature = Math.round(clamp(((s.b - s.r) / sum) * 260 * 0.5, -40, 40));
+    ad.tint = Math.round(clamp((((s.r + s.b) / 2 - s.g) / sum) * -260 * 0.5, -30, 30));
+    ad.sharpen = Math.max(ad.sharpen || 0, 20);
+  });
+  player.needsRender = true;
+  toast(t('Ajuste automático aplicado'), 'success');
+}
+
+// ---------- fechar todos os espaços vazios ----------
+export function closeAllGaps() {
+  const moved = new Map();
+  store.batch('close-gaps', () => {
+    const order = [...store.p.tracks].sort((a, b) => (b.main ? 1 : 0) - (a.main ? 1 : 0) || (a.type === 'video' ? -1 : 1) - (b.type === 'video' ? -1 : 1));
+    for (const tr of order) {
+      if (tr.locked) continue;
+      let cur = 0;
+      for (const c of store.clipsOn(tr.id)) {
+        if (moved.has(c.id)) { cur = Math.max(cur, c.start + c.duration); continue; }
+        const ns = c.start > cur ? cur : c.start;
+        const delta = ns - c.start;
+        if (Math.abs(delta) > 1e-4) {
+          c.start = ns; moved.set(c.id, delta);
+          for (const x of store.linked ? store.linked(c) : []) if (x !== c && !moved.has(x.id)) { x.start += delta; moved.set(x.id, delta); }
+        } else moved.set(c.id, 0);
+        cur = c.start + c.duration;
+      }
+    }
+  });
+  toast(t('Espaços vazios removidos'), 'success');
+}

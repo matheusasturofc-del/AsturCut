@@ -200,7 +200,7 @@ class Store {
   addMediaClip(media, { at = null, trackId = null } = {}) {
     this.begin();
     const type = media.type === 'audio' ? 'audio' : 'video';
-    const dur = media.type === 'image' ? settings.get('imageDuration') : (media.duration || 5);
+    const dur = media.type === 'image' ? (media.animated && media.animDur ? Math.max(media.animDur, Math.min(10, settings.get('imageDuration'))) : settings.get('imageDuration')) : (media.duration || 5);
     let track, start;
     if (trackId) {
       track = this.track(trackId); start = at ?? this.time;

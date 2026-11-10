@@ -12,7 +12,7 @@ import { removeSilencesDialog } from './silence.js';
 import { openCaptionsDialog } from './captions.js';
 import { openRecorder } from './recorder.js';
 import { stabilize } from './analysis.js';
-import { ttsDialog, editMarker, markerAt, reverseClip, colorMatchSelected, splitLayoutDialog, beatsDialog, normalizeDialog } from './extras.js';
+import { closeAllGaps, ttsDialog, editMarker, markerAt, reverseClip, colorMatchSelected, splitLayoutDialog, beatsDialog, normalizeDialog } from './extras.js';
 import { multicamDialog, openMulticamMonitor, isMulticamSeq } from './multicam.js';
 import { sequences, switchSequence, newSequence, renameSequence, duplicateSequence, deleteSequence, nestSelection, seqDuration, insertSequenceClip, seqData, angleTracks } from './sequences.js';
 import { freezeFrame, detectScenes, audioCrossfades, openHistory } from './protools.js';
@@ -76,6 +76,7 @@ export function initTimeline() {
     btn('trash', 'Excluir (Delete)', () => store.deleteClips()),
     btn('ripple', 'Excluir e fechar o espaço — ripple (Shift+Delete)', () => (store.selectedGap ? store.deleteGap() : store.rippleDelete())),
     btn('duplicate', 'Duplicar (Ctrl+D)', () => store.duplicate()),
+    btn('closeGaps', 'Fechar todos os espaços vazios', () => closeAllGaps()),
     btn('detach', 'Separar áudio', () => { const c = store.primarySelected(); if (c?.type === 'video') { store.detachAudio(c.id); toast('Áudio separado', 'success'); } else toast('Selecione um vídeo', 'error'); }),
     btn('marker', 'Adicionar marcador (M)', () => store.addMarker()),
     btn('history', 'Histórico de ações (Ctrl+H)', () => openHistory()),

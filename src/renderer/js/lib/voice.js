@@ -2,6 +2,10 @@
 export const PITCH_URL = new URL('../worklets/pitch.js', import.meta.url).href;
 
 export const VOICES = [
+  { id: 'clean', name: 'Voz limpa (menos ruído)', cat: 'Melhorar voz', hp: 90, lp: 9500, peak: [3000, 3], comp: [-28, 4] },
+  { id: 'announcer', name: 'Locutor de rádio', cat: 'Melhorar voz', hp: 70, lowBoost: 4, peak: [3500, 4], comp: [-30, 6] },
+  { id: 'podcast', name: 'Podcast', cat: 'Melhorar voz', hp: 80, peak: [2500, 2.5], comp: [-24, 3.5] },
+  { id: 'loud', name: 'Mais alto e presente', cat: 'Melhorar voz', hp: 60, peak: [4000, 3], comp: [-35, 8], makeup: 2 },
   { id: 'chipmunk', name: 'Esquilo', cat: 'Personagens', pitch: 1.6 },
   { id: 'kid', name: 'Criança', cat: 'Personagens', pitch: 1.3, hp: 200 },
   { id: 'female', name: 'Voz aguda', cat: 'Personagens', pitch: 1.18 },
@@ -57,6 +61,7 @@ export function buildVoice(ctx, id, pitchOk = true) {
   if (v.lp) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = v.lp; f.Q.value = 0.7; chain(f); }
   if (v.peak) { const f = ctx.createBiquadFilter(); f.type = 'peaking'; f.frequency.value = v.peak[0]; f.gain.value = v.peak[1]; chain(f); }
   if (v.lowBoost) { const f = ctx.createBiquadFilter(); f.type = 'lowshelf'; f.frequency.value = 180; f.gain.value = v.lowBoost; chain(f); }
+  if (v.comp) { const c = ctx.createDynamicsCompressor(); c.threshold.value = v.comp[0]; c.ratio.value = v.comp[1]; c.knee.value = 8; c.attack.value = 0.005; c.release.value = 0.15; chain(c); const g = ctx.createGain(); g.gain.value = v.makeup || Math.min(2.2, 1 + (-v.comp[0] / 40) * (1 - 1 / v.comp[1])); chain(g); }
   if (v.drive) { const w = ctx.createWaveShaper(); w.curve = driveCurve(v.drive); w.oversample = '2x'; chain(w); const g = ctx.createGain(); g.gain.value = 1 / (1 + v.drive / 30); chain(g); }
   if (v.ring) {
     const g = ctx.createGain(); g.gain.value = 0;

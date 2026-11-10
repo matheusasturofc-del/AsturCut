@@ -20,7 +20,7 @@ import { defaultGrade, colorWheel, curvesEditor, importLut, toggleScopes } from 
 import { captionsPanel } from './captions.js';
 import { stabilize, trackMask, autoReframeDialog } from './analysis.js';
 import { switchSequence, renameSequence } from './sequences.js';
-import { ttsDialog } from './extras.js';
+import { ttsDialog, autoEnhance } from './extras.js';
 import { VOICES } from './lib/voice.js';
 const tr = (s, v) => t(s, v);
 import { whiteBalanceFrom, applyColorToMedia, copyAttributes, pasteAttributesDialog, hasAttributes, gainDialog, speedDialog, toDb } from './editTools.js';
@@ -459,6 +459,7 @@ function adjustTab(c) {
   const s = (label, key, min = -100, max = 100) => slider(label, a[key], { min, max, def: 0, onInput: (v) => upd(c, { adjust: { [key]: v } }) });
   const bypass = colorBypass.has(c.id);
   bodyEl.append(el('div', { class: 'color-tools' },
+    (c.type === 'video' || c.type === 'image') ? el('button', { class: 'btn sm primary', title: t('Corrige brilho, contraste, cor e nitidez sozinho'), onclick: () => autoEnhance(c), html: icon('wand', 13) + `<span>${t('Ajuste automático')}</span>` }) : null,
     el('button', { class: 'btn sm', title: t('Clique no conta-gotas e depois em algo branco ou cinza no vídeo'), onclick: () => { startPick((r, g, b) => whiteBalanceFrom(c, r, g, b)); }, html: icon('pipette', 13) + `<span>${t('Balanço de branco')}</span>` }),
     el('button', { class: 'btn sm' + (bypass ? ' on' : ''), title: t('Comparar antes/depois'), onclick: () => { bypass ? colorBypass.delete(c.id) : colorBypass.add(c.id); bus.emit('frame-ready'); render(); }, html: icon('compare', 13) + `<span>${bypass ? t('Mostrando: antes') : t('Antes/depois')}</span>` }),
     c.mediaId ? el('button', { class: 'btn sm', title: t('Aplica estes ajustes e o filtro em todos os clipes desta mesma mídia'), onclick: () => applyColorToMedia(c) }, t('Aplicar à mídia toda')) : null));

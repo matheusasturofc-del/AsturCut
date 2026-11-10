@@ -198,6 +198,9 @@ async function probe(m) {
     m.width = elm.naturalWidth || 1000; m.height = elm.naturalHeight || 1000; m.duration = 0;
     r.img = elm;
     r.thumb = thumbFrom(elm, m.width, m.height);
+    if (/^(gif|webp|apng|png)$/i.test(m.ext || '') && typeof ImageDecoder !== 'undefined') {
+      try { const g = await decodeAnimated(m); if (g) { r.gif = g; m.animated = true; m.animDur = +g.total.toFixed(3); } } catch (e) { console.warn('gif', e); }
+    }
   } else {
     m.duration = isFinite(elm.duration) ? elm.duration : 0;
     if (m.type === 'video') { m.width = elm.videoWidth; m.height = elm.videoHeight; }
@@ -349,7 +352,39 @@ export function setPlayerVoice(p, id) {
 export function gcPlayers() {
   for (const id of [...pool.keys()]) { const root = id.split('>')[0]; if (!store.clip(root) && !(store.p.sequences || []).some((s) => s.id === root)) releasePlayer(id); }
 }
-export function imageFor(mediaId) { return runtime.get(mediaId)?.img || null; }
+export function imageFor(mediaId, lt = 0) {
+  const r = runtime.get(mediaId);
+  if (!r) return null;
+  if (r.gif && r.gif.frames.length > 1) {
+    const g = r.gif, tt = ((lt % g.total) + g.total) % g.total;
+    let lo = 0, hi = g.frames.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (g.frames[mid].t <= tt) lo = mid; else hi = mid - 1; }
+    return g.frames[lo].img;
+  }
+  return r.img || null;
+}
+// GIF / WebP / PNG animados: decodifica todos os quadros (até 600)
+async function decodeAnimated(m) {
+  const type = { gif: 'image/gif', webp: 'image/webp', apng: 'image/apng', png: 'image/png' }[(m.ext || '').toLowerCase()];
+  const data = await (await fetch(mediaUrl(m, true))).arrayBuffer();
+  if (!(await ImageDecoder.isTypeSupported(type))) return null;
+  const dec = new ImageDecoder({ data, type });
+  await dec.tracks.ready;
+  const tr = dec.tracks.selectedTrack;
+  if (!tr || !tr.animated || tr.frameCount < 2) { dec.close(); return null; }
+  const n = Math.min(600, tr.frameCount), frames = [];
+  let tt = 0;
+  for (let i = 0; i < n; i++) {
+    const { image } = await dec.decode({ frameIndex: i });
+    const dur = Math.max(0.02, (image.duration || 100000) / 1e6);
+    const bmp = await createImageBitmap(image);
+    image.close();
+    frames.push({ t: tt, img: bmp });
+    tt += dur;
+  }
+  dec.close();
+  return { frames, total: Math.max(0.05, tt) };
+}
 
 // ---------- Fontes personalizadas ----------
 export async function importFonts() {
