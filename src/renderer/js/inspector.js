@@ -86,10 +86,52 @@ function animSlider(c, prop, label, { mul = 1, ...opts }) {
   return r;
 }
 
+// linha do tempo de keyframes (como os Controles de efeito do Premiere): arraste ◆ para mudar o tempo
+const KF_LABEL = { x: 'Posição X', y: 'Posição Y', scale: 'Escala', rotation: 'Rotação', opacity: 'Opacidade', volume: 'Volume', speed: 'Velocidade' };
+function kfLanes(c) {
+  const props = Object.keys(c.kf || {}).filter((p) => (c.kf[p] || []).length);
+  if (!props.length) return null;
+  const box = el('div', { class: 'kfl' });
+  const D = Math.max(0.01, c.duration);
+  const head = el('div', { class: 'kfl-ph' });
+  const placeHead = () => { head.style.left = (clamp((store.time - c.start) / D, 0, 1) * 100) + '%'; };
+  for (const p of props) {
+    const lane = el('div', { class: 'kfl-lane' });
+    for (const f of c.kf[p]) {
+      const d = el('div', { class: 'kfl-key' + (Math.abs(f.t - localTime(c)) < 1 / 60 ? ' on' : ''), title: `${t(KF_LABEL[p] || p)} · ${fmtShort(f.t)}`, style: { left: (clamp(f.t / D, 0, 1) * 100) + '%' } });
+      d.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const r = lane.getBoundingClientRect();
+        let moved = false;
+        store.begin();
+        const mv = (ev) => {
+          moved = true;
+          f.t = +clamp(((ev.clientX - r.left) / r.width) * D, 0, D).toFixed(3);
+          d.style.left = (f.t / D * 100) + '%';
+          store.touch();
+        };
+        const up = () => {
+          removeEventListener('pointermove', mv); removeEventListener('pointerup', up);
+          if (moved) { c.kf[p].sort((a, b) => a.t - b.t); store.commit('kf-move'); } else { store._last = null; store.setTime(c.start + f.t); }
+        };
+        addEventListener('pointermove', mv); addEventListener('pointerup', up);
+      });
+      d.addEventListener('dblclick', (e) => { e.stopPropagation(); store.begin(); c.kf[p] = c.kf[p].filter((x) => x !== f); if (!c.kf[p].length) delete c.kf[p]; store.commit('kf'); });
+      lane.append(d);
+    }
+    lane.addEventListener('pointerdown', (e) => { const r = lane.getBoundingClientRect(); store.setTime(c.start + clamp((e.clientX - r.left) / r.width, 0, 1) * D); });
+    box.append(el('div', { class: 'kfl-row' }, el('span', { class: 'kfl-name' }, t(KF_LABEL[p] || p)), lane));
+  }
+  const wrap = el('div', { class: 'kfl-wrap' }, box, el('div', { class: 'kfl-ov' }, head));
+  placeHead();
+  return el('div', {}, wrap, el('div', { class: 'muted small' }, t('Arraste ◆ para mudar o tempo · clique para ir até ele · duplo clique apaga')));
+}
+
 function kfSection(c) {
   if (!anyKf(c)) return null;
   const e = easeAtCursor(c);
   return section(t('Keyframes'),
+    kfLanes(c),
     e ? select(t('Suavização:'), e, EASINGS.map(([v, n]) => [v, t(n)]), (v) => { store.begin(); setEaseAtCursor(c, v); store.commit('ease'); })
       : el('div', { class: 'muted small' }, t('Posicione o cursor sobre um keyframe (◆) para escolher a suavização.')),
     el('div', { class: 'btn-row' },

@@ -994,3 +994,12 @@ body.mobile .cp-row { grid-template-columns: 110px 1fr; }
 .pal-item.on .pal-path { color: rgba(4,16,20,.7); }
 .pal-label { flex: 1; }
 .pal-item kbd { font-size: 11px; padding: 1px 6px; border: 1px solid var(--border); border-radius: 4px; opacity: .8; }
+.kfl-wrap { position: relative; margin: 4px 0 6px; }
+.kfl { display: flex; flex-direction: column; gap: 3px; }
+.kfl-row { display: flex; align-items: center; gap: 8px; }
+.kfl-name { width: 74px; flex: none; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kfl-lane { position: relative; flex: 1; height: 18px; background: rgba(255,255,255,.04); border-radius: 4px; cursor: pointer; }
+.kfl-key { position: absolute; top: 3px; width: 11px; height: 11px; margin-left: -5.5px; background: var(--accent); transform: rotate(45deg); border-radius: 2px; cursor: ew-resize; box-shadow: 0 0 0 1px rgba(0,0,0,.6); }
+.kfl-key.on { background: #ffd23f; }
+.kfl-ov { position: absolute; left: 82px; right: 0; top: 0; bottom: 0; pointer-events: none; }
+.kfl-ph { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #e5484d; }
