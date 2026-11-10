@@ -613,6 +613,15 @@ ipcMain.handle('tts:speak', async (_e, { text, voice, rate = 0 }) => {
   return out;
 });
 
+// ---------- grava mídia gerada pelo app (ex.: áudio sem ruído) ----------
+ipcMain.handle('media:write', async (_e, { name, data }) => {
+  const dir = path.join(app.getPath('userData'), 'processed');
+  await fs.promises.mkdir(dir, { recursive: true });
+  const out = path.join(dir, `${Date.now()}-${String(name || 'midia').replace(/[\\/:*?"<>|]/g, '-')}`);
+  await fs.promises.writeFile(out, Buffer.from(data));
+  return out;
+});
+
 // ---------- Coletar arquivos: copia toda a mídia do projeto para uma pasta ----------
 ipcMain.handle('project:collect', async (e, { name, files }) => {
   const r = await dialog.showOpenDialog(win, { title: tr('collectTitle') || 'Coletar arquivos', properties: ['openDirectory', 'createDirectory'] });

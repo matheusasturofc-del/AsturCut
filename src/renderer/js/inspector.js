@@ -21,6 +21,7 @@ import { captionsPanel } from './captions.js';
 import { stabilize, trackMask, autoReframeDialog, maskPosAt, trackObject, videoUnder } from './analysis.js';
 import { switchSequence, renameSequence } from './sequences.js';
 import { ttsDialog, autoEnhance } from './extras.js';
+import { denoiseDialog } from './denoise.js';
 import { VOICES } from './lib/voice.js';
 const tr = (s, v) => t(s, v);
 import { whiteBalanceFrom, applyColorToMedia, copyAttributes, pasteAttributesDialog, hasAttributes, gainDialog, speedDialog, toDb, userLooks, saveLook, applyLook, deleteLook } from './editTools.js';
@@ -395,7 +396,7 @@ function audioTab(c) {
   bodyEl.append(section('Áudio',
     animSlider(c, 'volume', 'Volume', { mul: 100, min: 0, max: 300, unit: '%', def: 100 }),
     el('div', { class: 'muted small vol-db' }, (() => { const d = toDb(valueAt(c, 'volume', localTime(c))); return isFinite(d) ? `≈ ${d.toFixed(1)} dB` : '-∞ dB'; })()),
-    el('div', { class: 'btn-row' }, el('button', { class: 'btn sm', onclick: () => gainDialog() }, t('Ganho de áudio...') + ' (G)')),
+    el('div', { class: 'btn-row' }, el('button', { class: 'btn sm', onclick: () => gainDialog() }, t('Ganho de áudio...') + ' (G)'), c.type !== 'sequence' ? el('button', { class: 'btn sm', title: t('Tira chiado e ruído de fundo da voz'), onclick: () => denoiseDialog(c) }, t('Reduzir ruído...')) : null),
     slider('Fade in', c.fadeIn, { min: 0, max: Math.min(10, c.duration / 2), step: 0.1, unit: 's', def: 0, onInput: (v) => upd(c, { fadeIn: v }) }),
     slider('Fade out', c.fadeOut, { min: 0, max: Math.min(10, c.duration / 2), step: 0.1, unit: 's', def: 0, onInput: (v) => upd(c, { fadeOut: v }) }),
     c.type === 'video' ? el('div', { class: 'btn-row' }, el('button', { class: 'btn', onclick: () => store.detachAudio(c.id) }, 'Separar áudio')) : null,

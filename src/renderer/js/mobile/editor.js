@@ -17,6 +17,7 @@ import { setSpeed } from '../timeline.js';
 import { freezeFrame, detectScenes } from '../protools.js';
 import { stabilize, autoReframeDialog, trackObject } from '../analysis.js';
 import { textEditDialog } from '../textedit.js';
+import { denoiseDialog } from '../denoise.js';
 import { splitLayoutDialog, beatsDialog, normalizeDialog, closeAllGaps, exportFrame, autoEnhance } from '../extras.js';
 import { initMobileTimeline, fitZoom } from './mtimeline.js';
 import { openSheet, closeSheet, sheetOpen, parkPanel } from './sheets.js';
@@ -165,6 +166,7 @@ function clipTools(c) {
     list.push(tool('speed', 'stopwatch', 'Velocidade', () => openInspector('speed', t('Velocidade'))));
     list.push(tool('volume', 'volume', 'Volume', () => openInspector('audio', t('Volume'))));
     list.push(tool('voice', 'mic', 'Efeitos de voz', () => openInspector('audio', t('Efeitos de voz'))));
+    list.push(tool('denoise', 'wand', 'Reduzir ruído', () => denoiseDialog(c)));
   }
   if (c.type !== 'audio' && c.type !== 'effect' && c.type !== 'filter') list.push(tool('anim', 'wand', 'Animações', () => openInspector('anim', t('Animações'))));
   if (visual) {
