@@ -8,7 +8,7 @@ const WIN = 0.02; // janela de análise: 20 ms
 const hasAudio = (c) => c.type === 'audio' || c.type === 'video';
 
 // grupos de clipes vinculados (vídeo + áudio separado); a análise usa o clipe que tem o som
-function groupsFrom(clips) {
+export function groupsFrom(clips) {
   const seen = new Set();
   const groups = [];
   for (const c of clips) {
@@ -100,7 +100,7 @@ function cutClip(x, a, b) {
 }
 
 // aplica: ranges em tempo absoluto, do fim para o começo
-function apply(groups, rangesByGroup, ripple) {
+export function apply(groups, rangesByGroup, ripple, label = 'silences') {
   store.begin();
   let removed = 0, count = 0;
   for (let gi = 0; gi < groups.length; gi++) {
@@ -122,7 +122,7 @@ function apply(groups, rangesByGroup, ripple) {
   }
   store.selection.clear();
   store.removeEmptyTracks();
-  store.commit('silences');
+  store.commit(label);
   bus.emit('selection');
   return { removed, count };
 }

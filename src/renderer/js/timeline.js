@@ -12,6 +12,7 @@ import { removeSilencesDialog } from './silence.js';
 import { openCaptionsDialog } from './captions.js';
 import { openRecorder } from './recorder.js';
 import { stabilize } from './analysis.js';
+import { textEditDialog } from './textedit.js';
 import { closeAllGaps, ttsDialog, editMarker, markerAt, reverseClip, colorMatchSelected, splitLayoutDialog, beatsDialog, normalizeDialog } from './extras.js';
 import { multicamDialog, openMulticamMonitor, isMulticamSeq } from './multicam.js';
 import { sequences, switchSequence, newSequence, renameSequence, duplicateSequence, deleteSequence, nestSelection, seqDuration, insertSequenceClip, seqData, angleTracks } from './sequences.js';
@@ -83,6 +84,7 @@ export function initTimeline() {
     el('div', { class: 'tb-sep' }),
     btn('silence', 'Tirar silêncios automaticamente', () => removeSilencesDialog()),
     btn('captions', 'Legendas automáticas', () => openCaptionsDialog()),
+    btn('text', 'Editar pelo texto — apague palavras e o vídeo é cortado', () => textEditDialog()),
     ...(canRecordScreen ? [btn('record', 'Gravar tela e webcam', () => openRecorder())] : []),
     el('div', { class: 'grow' }),
     btn('gridview', 'Multicâmera — juntar várias câmeras e cortar entre elas', () => (store.p.clips.some((c) => c.type === 'sequence' && isMulticamSeq(c.seqId)) ? openMulticamMonitor() : multicamDialog())),
@@ -474,6 +476,7 @@ export function clipMenu(x, y, c) {
     hasAudio(c) ? { label: 'Ganho de áudio...', shortcut: 'G', onClick: () => gainDialog() } : null,
     hasAudio(c) ? { label: 'Legendas automáticas...', onClick: () => openCaptionsDialog(store.withLinked([c.id]).map((id) => store.clip(id))) } : null,
     hasAudio(c) ? { label: 'Tirar silêncios...', onClick: () => removeSilencesDialog() } : null,
+    hasAudio(c) ? { label: 'Editar pelo texto...', onClick: () => textEditDialog() } : null,
     c.type === 'video' ? { label: 'Congelar quadro', shortcut: 'Shift+F', onClick: () => freezeFrame() } : null,
     c.type === 'video' ? { label: 'Detectar cenas e cortar...', onClick: () => detectScenes(c) } : null,
     c.type === 'video' ? { label: 'Estabilizar vídeo', onClick: () => stabilize(c) } : null,

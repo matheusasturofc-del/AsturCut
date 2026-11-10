@@ -26,6 +26,7 @@ import { openCaptionsDialog } from './captions.js';
 import { removeSilencesDialog } from './silence.js';
 import { stabilize, autoReframeDialog } from './analysis.js';
 import { newSequence, nestSelection } from './sequences.js';
+import { textEditDialog } from './textedit.js';
 import { exportFrame, exportSrt, importSrt, chaptersDialog, splitLayoutDialog, reverseClip, beatsDialog, normalizeDialog, colorMatchSelected, ttsDialog, closeAllGaps, autoEnhance } from './extras.js';
 import { multicamDialog, openMulticamMonitor } from './multicam.js';
 import { freezeFrame, openHistory, detectScenes, autoDuckDialog, audioCrossfades, createProxiesDialog, toggleProxies } from './protools.js';
@@ -95,6 +96,7 @@ function mainMenu(anchor) {
     canRecordScreen ? { label: t('Gravar tela e webcam...'), onClick: () => openRecorder() } : null,
     { label: t('Legendas automáticas...'), onClick: () => openCaptionsDialog() },
     { label: t('Tirar silêncios...'), onClick: () => removeSilencesDialog() },
+    { label: t('Editar pelo texto (transcrição)...'), onClick: () => textEditDialog() },
     isDesktop && !isMobile ? { label: t('Texto para fala (narração)...'), onClick: () => ttsDialog() } : null,
     { label: t('Ferramentas profissionais'), submenu: [
       { label: t('Histórico de ações...'), shortcut: 'Ctrl+H', onClick: () => openHistory() },

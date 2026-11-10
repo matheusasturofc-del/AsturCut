@@ -8,7 +8,7 @@ import { renderAudioOffline, clearDecoded } from './fastExport.js';
 import { settings } from './settings.js';
 import { drawText } from './compositor.js';
 
-const MODELS = {
+export const MODELS = {
   fast: { id: 'Xenova/whisper-base', size: '~150 MB' },
   precise: { id: 'Xenova/whisper-small', size: '~250 MB' },
 };
@@ -118,14 +118,14 @@ async function audioForAsr(onlySelected) {
   return buf.getChannelData(0);
 }
 // áudio só de um clipe (e o áudio vinculado a ele), do início ao fim do clipe
-async function audioForClip(c) {
+export async function audioForClip(c) {
   const ids = new Set(store.linked(c).map((x) => x.id));
   const buf = await renderAudioOffline(c.start, c.duration, null, { sampleRate: 16000, channels: 1, filter: (x) => ids.has(x.id) });
   clearDecoded();
   return buf.getChannelData(0);
 }
 // clipes com fala para "cada clipe separado" (um por grupo vinculado)
-function speechClips(onlySelected) {
+export function speechClips(onlySelected) {
   const pool = (onlySelected && store.selectedClips().length ? store.selectedClips() : store.p.clips).filter((c) => c.type === 'video' || c.type === 'audio');
   const seen = new Set(), out = [];
   for (const c of pool.sort((a, b) => a.start - b.start)) {
@@ -209,7 +209,7 @@ export function openCaptionsDialog(forClips = null) {
 }
 
 let worker = null;
-function getWorker() {
+export function getWorker() {
   if (!worker) worker = new Worker(new URL('./ai/asr-worker.js', import.meta.url), { type: 'module' });
   return worker;
 }
@@ -288,6 +288,26 @@ async function runCaptions(o) {
     });
   }
 }
+
+// transcreve um áudio (Float32 16 kHz) e devolve as palavras { text, start, end }
+export function transcribeAudio(audio, { quality = 'precise', lang = null } = {}, onStatus = () => {}) {
+  return new Promise((resolve, reject) => {
+    const words = [];
+    const w = getWorker();
+    w.onmessage = (e) => {
+      const d = e.data;
+      if (d.type === 'download') onStatus('download', d.loaded / d.total, t('Baixando a IA de legendas (só na primeira vez)... {a} de {b}', { a: fmtBytes(d.loaded), b: fmtBytes(d.total) }));
+      else if (d.type === 'status') onStatus('load', 0, t('Carregando a IA...'));
+      else if (d.type === 'progress') onStatus('progress', d.i / d.n, t('Ouvindo e escrevendo... parte {a} de {b}', { a: d.i + 1, b: d.n }));
+      else if (d.type === 'segment') { words.push(...d.words); onStatus('segment', 0, d.words.map((x) => x.text).join('')); }
+      else if (d.type === 'done') resolve(words);
+      else if (d.type === 'error') reject(new Error(d.message));
+    };
+    w.onerror = (e) => reject(new Error(e.message || 'worker'));
+    w.postMessage({ audio, model: MODELS[quality]?.id || MODELS.precise.id, language: lang || null, vendor: window.ASTUR_VENDOR?.transformers || null }, [audio.buffer]);
+  });
+}
+export function stopTranscribe() { if (worker) { worker.terminate(); worker = null; } }
 
 // ---------- personalizar legendas (todas de uma vez, como nos editores de celular) ----------
 const groupClips = (g) => store.p.clips.filter((c) => c.autoCaption === g).sort((a, b) => a.start - b.start);
