@@ -1,6 +1,7 @@
 // Linha do tempo: trilhas, clipes, arrastar/aparar/dividir, régua, zoom e soltar da biblioteca
 import { store, bus } from './store.js';
 import { $, el, icon, fmtTime, fmtShort, clamp, dragHandler, contextMenu, promptDialog, toast } from './util.js';
+import { t } from './i18n.js';
 import { runtime, canRecordScreen } from './media.js';
 import { mobileUI } from './mobile/detect.js';
 import { settings } from './settings.js';
@@ -10,6 +11,9 @@ import { keyTimes } from './keyframes.js';
 import { removeSilencesDialog } from './silence.js';
 import { openCaptionsDialog } from './captions.js';
 import { openRecorder } from './recorder.js';
+import { stabilize } from './analysis.js';
+import { multicamDialog, openMulticamMonitor, isMulticamSeq } from './multicam.js';
+import { sequences, switchSequence, newSequence, renameSequence, duplicateSequence, deleteSequence, nestSelection, seqDuration, insertSequenceClip, seqData, angleTracks } from './sequences.js';
 import { freezeFrame, detectScenes, audioCrossfades, openHistory } from './protools.js';
 import { labelMenu, speedDialog, gainDialog, copyAttributes, pasteAttributesDialog, hasAttributes } from './editTools.js';
 import { openMixer } from './audiomix.js';
@@ -22,6 +26,30 @@ let mode = 'select';
 let root, scroller, inner, rulerCanvas, playheadEl;
 let renderQueued = false;
 let dropIndicator = null;
+let seqBar = null;
+
+// abas das sequências do projeto
+function renderSeqBar() {
+  if (!seqBar) return;
+  const list = sequences();
+  seqBar.innerHTML = '';
+  seqBar.classList.toggle('single', list.length < 2);
+  for (const s of list) {
+    const on = s.id === store.p.seqId;
+    const tab = el('button', { class: 'seq-tab' + (on ? ' on' : ''), title: on ? t('Sequência aberta — duplo clique para renomear') : t('Abrir esta sequência'),
+      onclick: () => switchSequence(s.id), ondblclick: () => renameSequence(s.id) }, el('span', { html: icon('layout', 12) }), el('span', {}, s.name));
+    tab.addEventListener('contextmenu', (e) => { e.preventDefault(); contextMenu(e.clientX, e.clientY, [
+      { label: t('Abrir'), onClick: () => switchSequence(s.id) },
+      { label: t('Renomear...'), onClick: () => renameSequence(s.id) },
+      { label: t('Duplicar'), onClick: () => duplicateSequence(s.id) },
+      !on ? { label: t('Inserir no cursor (aninhar)'), onClick: () => insertSequenceClip(s.id) } : null,
+      '-',
+      { label: t('Excluir sequência'), disabled: list.length < 2, onClick: () => deleteSequence(s.id) },
+    ]); });
+    seqBar.append(tab);
+  }
+  seqBar.append(el('button', { class: 'seq-tab add', title: t('Nova sequência'), onclick: () => newSequence() }, '+ ' + t('Sequência')));
+}
 
 export function initTimeline() {
   root = $('#panel-timeline');
@@ -55,6 +83,7 @@ export function initTimeline() {
     btn('captions', 'Legendas automáticas', () => openCaptionsDialog()),
     ...(canRecordScreen ? [btn('record', 'Gravar tela e webcam', () => openRecorder())] : []),
     el('div', { class: 'grow' }),
+    btn('gridview', 'Multicâmera — juntar várias câmeras e cortar entre elas', () => (store.p.clips.some((c) => c.type === 'sequence' && isMulticamSeq(c.seqId)) ? openMulticamMonitor() : multicamDialog())),
     btn('mixer', 'Mixer de áudio (efeitos por trilha)', () => openMixer()),
     el('div', { class: 'tb-sep' }),
     el('button', { class: 'icon-btn toggle', id: 'tl-magnet', title: 'Trilha principal magnética', onclick: () => { settings.set('magnet', !settings.get('magnet')); store.applyMagnet(); bus.emit('change', 'magnet'); syncToggles(); }, html: icon('magnet') }),
@@ -68,7 +97,11 @@ export function initTimeline() {
   scroller = el('div', { class: 'tl-scroll', id: 'tl-scroll' });
   inner = el('div', { class: 'tl-inner' });
   scroller.append(inner);
-  root.append(tb, scroller);
+  seqBar = el('div', { class: 'tl-seqbar' });
+  root.append(tb, seqBar, scroller);
+  renderSeqBar();
+  bus.on('sequences', renderSeqBar);
+  bus.on('project', renderSeqBar);
 
   scroller.addEventListener('scroll', () => drawRuler());
   scroller.addEventListener('wheel', (e) => {
@@ -275,7 +308,7 @@ function moveTrack(tr, dir) {
   store.commit('movetrack');
 }
 
-const TYPE_LABEL = { video: 'Vídeo', image: 'Imagem', audio: 'Áudio', text: 'Texto', sticker: 'Sticker', shape: 'Forma', effect: 'Efeito', filter: 'Filtro' };
+const TYPE_LABEL = { sequence: 'Sequência', video: 'Vídeo', image: 'Imagem', audio: 'Áudio', text: 'Texto', sticker: 'Sticker', shape: 'Forma', effect: 'Efeito', filter: 'Filtro' };
 
 function clipLabel(c) {
   if (c.type === 'text') return c.text.content.split('\n')[0] || 'Texto';
@@ -313,8 +346,8 @@ function renderClip(c, tr, h) {
     drawWave(cv, c, rt, Math.min(w, 6000), c.type === 'video' ? 16 : h - 18);
     node.append(cv);
   }
-  if (c.type === 'text' || c.type === 'sticker' || c.type === 'shape' || c.type === 'effect' || c.type === 'filter') {
-    node.append(el('div', { class: 'clip-icon', html: icon({ text: 'text', sticker: 'sticker', shape: 'star', effect: 'effects', filter: 'filters' }[c.type], 13) }));
+  if (c.type === 'text' || c.type === 'sticker' || c.type === 'shape' || c.type === 'effect' || c.type === 'filter' || c.type === 'sequence') {
+    node.append(el('div', { class: 'clip-icon', html: icon({ text: 'text', sticker: 'sticker', shape: 'star', effect: 'effects', filter: 'filters', sequence: 'layout' }[c.type], 13) }));
   }
   const badges = [];
   if (c.speed && c.speed !== 1) badges.push(c.speed + 'x');
@@ -362,7 +395,7 @@ function renderClip(c, tr, h) {
     if (mode === 'slide') { startSlide(e, c); return; }
     startMove(e, c);
   });
-  node.addEventListener('dblclick', () => { if (c.type === 'text') bus.emit('edit-text', c.id); });
+  node.addEventListener('dblclick', () => { if (c.type === 'text') bus.emit('edit-text', c.id); else if (c.type === 'sequence') switchSequence(c.seqId); });
   node.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     if (!store.selection.has(c.id)) store.select(c.id);
@@ -371,6 +404,7 @@ function renderClip(c, tr, h) {
   return node;
 }
 
+function angleNames(c) { const d = seqData(c.seqId); return d ? angleTracks(d).map((tr) => tr.name) : []; }
 function hasAudio(c) { return c.type === 'audio' || c.type === 'video'; }
 
 function drawWave(cv, c, rt, w, h) {
@@ -413,6 +447,10 @@ export function clipMenu(x, y, c) {
     isVis ? { label: 'Espelhar', onClick: () => store.updateClip(c.id, { transform: { flipH: !c.transform.flipH } }) } : null,
     isVis ? { label: 'Girar 90°', onClick: () => store.updateClip(c.id, { transform: { rotation: (c.transform.rotation + 90) % 360 } }) } : null,
     hasAudio(c) ? { label: c.volume === 0 ? 'Ativar som do clipe' : 'Silenciar clipe', onClick: () => store.updateClip(c.id, { volume: c.volume === 0 ? 1 : 0 }) } : null,
+    c.type === 'sequence' ? { label: 'Abrir sequência aninhada', onClick: () => switchSequence(c.seqId) } : null,
+    c.type === 'sequence' && isMulticamSeq(c.seqId) ? { label: 'Câmera', submenu: angleNames(c).map((n, i) => ({ label: (i + 1) + ' — ' + n, checked: (c.mcAngle ?? 0) === i, onClick: () => { store.updateClip(c.id, { mcAngle: i }); } })) } : null,
+    c.type === 'sequence' && isMulticamSeq(c.seqId) ? { label: 'Monitor multicâmera', onClick: () => openMulticamMonitor() } : null,
+    { label: multi ? 'Aninhar clipes selecionados' : 'Aninhar (transformar em sequência)', onClick: () => nestSelection() },
     { label: 'Velocidade', submenu: [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5].map((s) => ({ label: s + 'x', checked: (c.speed || 1) === s, onClick: () => setSpeed(c, s) })) },
     { label: 'Velocidade e duração...', shortcut: 'Ctrl+R', onClick: () => speedDialog() },
     hasAudio(c) ? { label: 'Ganho de áudio...', shortcut: 'G', onClick: () => gainDialog() } : null,
@@ -420,6 +458,7 @@ export function clipMenu(x, y, c) {
     hasAudio(c) ? { label: 'Tirar silêncios...', onClick: () => removeSilencesDialog() } : null,
     c.type === 'video' ? { label: 'Congelar quadro', shortcut: 'Shift+F', onClick: () => freezeFrame() } : null,
     c.type === 'video' ? { label: 'Detectar cenas e cortar...', onClick: () => detectScenes(c) } : null,
+    c.type === 'video' ? { label: 'Estabilizar vídeo', onClick: () => stabilize(c) } : null,
     hasAudio(c) ? { label: 'Crossfade de áudio nas emendas', onClick: () => audioCrossfades() } : null,
     { label: 'Rótulo', submenu: labelMenu() },
     linked ? { label: 'Desvincular áudio e vídeo', onClick: () => store.unlink() } : multi ? { label: 'Vincular clipes', onClick: () => store.link() } : null,
@@ -559,7 +598,7 @@ function touching(c) {
     next: next && Math.abs(c.start + c.duration - next.start) < 0.02 ? next : null,
   };
 }
-const mediaLen = (c) => { const m = c.mediaId && store.media(c.mediaId); return m && (m.type === 'video' || m.type === 'audio') && m.duration ? m.duration : Infinity; };
+const mediaLen = (c) => { if (c.type === 'sequence') return seqDuration(c.seqId) || Infinity; const m = c.mediaId && store.media(c.mediaId); return m && (m.type === 'video' || m.type === 'audio') && m.duration ? m.duration : Infinity; };
 
 // edição ripple: aparar empurra/puxa os clipes seguintes da trilha
 function startRippleTrim(e, c, side) {
@@ -655,7 +694,8 @@ function startTrim(e, c, side, plain = false) {
   const o = { start: c.start, duration: c.duration, in: c.in || 0 };
   const m = c.mediaId ? store.media(c.mediaId) : null;
   const spd = c.speed || 1;
-  const limited = m && (m.type === 'video' || m.type === 'audio') && m.duration;
+  const seqLen = c.type === 'sequence' ? seqDuration(c.seqId) : 0;
+  const limited = (m && (m.type === 'video' || m.type === 'audio') && m.duration) || seqLen;
   const pts = snapPoints([c.id]);
   const neighbors = store.clipsOn(c.trackId).filter((x) => x.id !== c.id);
   const prevEnd = Math.max(0, ...neighbors.filter((x) => x.start + x.duration <= o.start + 1e-3).map((x) => x.start + x.duration));
@@ -679,7 +719,7 @@ function startTrim(e, c, side, plain = false) {
     } else {
       let ne = snap(o.start + o.duration + dt, pts).t;
       let nd = ne - o.start;
-      if (limited) nd = Math.min(nd, (m.duration - o.in) / spd);
+      if (limited) nd = Math.min(nd, ((m?.duration || seqLen) - o.in) / spd);
       if (!magnetMain) nd = Math.min(nd, nextStart - o.start);
       c.duration = Math.max(0.1, nd);
       showSnap(Math.abs(o.start + c.duration - ne) < 1e-6 ? ne : null);

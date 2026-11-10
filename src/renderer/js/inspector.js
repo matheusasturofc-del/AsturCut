@@ -18,6 +18,9 @@ import { hasKf, anyKf, valueAt, setValue, toggleAnim, toggleKey, keyAtCursor, ju
 import { colorBypass, defaultMask } from './compositor.js';
 import { defaultGrade, colorWheel, curvesEditor, importLut, toggleScopes } from './color.js';
 import { captionsPanel } from './captions.js';
+import { stabilize, trackMask, autoReframeDialog } from './analysis.js';
+import { switchSequence, renameSequence } from './sequences.js';
+const tr = (s, v) => t(s, v);
 import { whiteBalanceFrom, applyColorToMedia, copyAttributes, pasteAttributesDialog, hasAttributes, gainDialog, speedDialog, toDb } from './editTools.js';
 
 let panel, bodyEl;
@@ -207,6 +210,7 @@ function tabsFor(c) {
   switch (c.type) {
     case 'video': return [['basic', 'Vídeo'], ['audio', 'Áudio'], ['speed', 'Velocidade'], ['anim', 'Animação'], ['adjust', 'Ajuste'], ['color', 'Cor'], ['fx', 'Efeitos']];
     case 'image': return [['basic', 'Imagem'], ['anim', 'Animação'], ['adjust', 'Ajuste'], ['color', 'Cor'], ['fx', 'Efeitos']];
+    case 'sequence': return [['basic', 'Sequência'], ['audio', 'Áudio'], ['speed', 'Velocidade'], ['anim', 'Animação'], ['adjust', 'Ajuste'], ['color', 'Cor'], ['fx', 'Efeitos']];
     case 'gen': return [['basic', 'Vídeo'], ['anim', 'Animação'], ['adjust', 'Ajuste'], ['color', 'Cor'], ['fx', 'Efeitos']];
     case 'text': return c.autoCaption ? [['captions', 'Legendas'], ['text', 'Texto'], ['basic', 'Transformar'], ['anim', 'Animação']] : [['text', 'Texto'], ['basic', 'Transformar'], ['anim', 'Animação'], ['fx', 'Efeitos']];
     case 'sticker': case 'shape': return [['basic', c.type === 'shape' ? 'Forma' : 'Sticker'], ['anim', 'Animação'], ['fx', 'Efeitos']];
@@ -235,6 +239,13 @@ function renderClip(c) {
 
 function basicTab(c) {
   const t = c.transform;
+  if (c.type === 'sequence') {
+    bodyEl.append(section(tr('Sequência aninhada'),
+      el('div', { class: 'muted small' }, tr('Este clipe mostra outra sequência inteira. Edite a sequência e ele muda junto.')),
+      el('div', { class: 'btn-row' },
+        el('button', { class: 'btn sm primary', onclick: () => switchSequence(c.seqId) }, tr('Abrir sequência')),
+        el('button', { class: 'btn sm', onclick: () => renameSequence(c.seqId) }, tr('Renomear')))));
+  }
   if (c.type === 'sticker') {
     bodyEl.append(section('Sticker', row('Emoji:', (() => { const i = el('input', { class: 'input', value: c.sticker?.emoji || '' }); i.addEventListener('change', () => updC(c, { sticker: { emoji: i.value } })); return i; })())));
   }
@@ -276,6 +287,7 @@ function basicTab(c) {
       slider('Cortar base', Math.round(cr.b * 100), { min: 0, max: 90, unit: '%', def: 0, onInput: (v) => upd(c, { crop: { ...cr, ...(c.crop || {}), b: v / 100 } }) }),
     ));
   }
+  if (c.type === 'video') bodyEl.append(stabSection(c));
   if (c.type !== 'audio') bodyEl.append(masksSection(c));
   if (media && focusTab !== 'basic') bodyEl.append(keyingSection(c));
   bodyEl.append(section('Mistura',
@@ -470,6 +482,25 @@ function colorTab(c) {
     el('div', { class: 'btn-row' }, el('button', { class: 'btn sm', onclick: () => importLut((id) => updC(c, { grade: { lut: id } })) }, t('Importar LUT (.cube)...')))));
 }
 
+// ---------- Estabilização ----------
+function stabSection(c) {
+  const sb = c.stab;
+  const box = section(t('Estabilizar'),
+    el('div', { class: 'muted small' }, t('Tira a tremedeira da câmera (como o Estabilizador de Distorção do Premiere).')),
+    el('div', { class: 'btn-row' },
+      el('button', { class: 'btn sm' + (sb ? '' : ' primary'), onclick: () => stabilize(c) }, sb ? t('Analisar de novo') : t('Estabilizar vídeo')),
+      el('button', { class: 'btn sm', title: t('Muda o formato e segue a pessoa automaticamente'), onclick: () => autoReframeDialog() }, t('Reenquadrar automaticamente'))));
+  if (sb) {
+    const set = (patch) => { Object.assign(c.stab, patch); store.touch(); };
+    box.append(
+      toggle(t('Ligado'), sb.on, (v) => { store.begin(); c.stab.on = v; store.commit('stab'); }),
+      slider(t('Suavidade'), Math.round(sb.smooth * 100), { min: 10, max: 400, unit: '%', def: 100, onInput: (v) => set({ smooth: v / 100 }) }),
+      slider(t('Zoom (100 = automático)'), Math.round((sb.zoom || 1) * 100), { min: 100, max: 150, unit: '%', def: 100, onInput: (v) => set({ zoom: v > 100 ? v / 100 : 0 }) }),
+      el('button', { class: 'btn sm danger', onclick: () => { store.begin(); delete c.stab; store.commit('stab'); } }, t('Remover estabilização')));
+  }
+  return box;
+}
+
 // ---------- Máscaras ----------
 function masksSection(c) {
   const list = c.masks || [];
@@ -483,6 +514,8 @@ function masksSection(c) {
     box.append(el('div', { class: 'fx-item' },
       el('div', { class: 'fx-head' }, el('b', {}, `${t('Máscara')} ${i + 1} · ${m.shape === 'rect' ? t('Retângulo') : t('Elipse')}`), el('div', { class: 'grow' }),
         el('button', { class: 'btn sm' + (m.invert ? ' on' : ''), onclick: () => { store.begin(); m.invert = !m.invert; store.commit('mask'); } }, t('Inverter')),
+        c.type === 'video' ? el('button', { class: 'btn sm' + (m.track ? ' on' : ''), title: t('Faz a máscara seguir o objeto que está embaixo dela'), onclick: () => trackMask(c, m) }, '◎ ' + t(m.track ? 'Rastrear de novo' : 'Rastrear')) : null,
+        m.track ? el('button', { class: 'btn sm', onclick: () => { store.begin(); delete m.track; store.commit('mask'); } }, t('Parar de rastrear')) : null,
         el('button', { class: 'icon-btn xs', title: t('Excluir'), onclick: () => { store.begin(); c.masks.splice(i, 1); store.commit('mask'); }, html: icon('trash', 13) })),
       slider('Posição X', Math.round(m.x * 100), { min: -100, max: 100, def: 0, onInput: (v) => set({ x: v / 100 }) }),
       slider('Posição Y', Math.round(m.y * 100), { min: -100, max: 100, def: 0, onInput: (v) => set({ y: v / 100 }) }),

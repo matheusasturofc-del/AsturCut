@@ -27,7 +27,9 @@ export function defaultText() {
 
 function newProject(name = t('Projeto sem título')) {
   const [w, h] = ASPECTS[settings.get('defaultAspect')] || [1920, 1080];
+  const seqId = uid('seq');
   return {
+    seqId, sequences: [{ id: seqId, name: t('Sequência 1') }],
     id: uid('prj'), name, version: 1, created: Date.now(),
     settings: { width: w, height: h, fps: settings.get('defaultFps') || 30, aspect: settings.get('defaultAspect') || '16:9', background: '#000000', originalAspect: true },
     media: [],
@@ -68,8 +70,8 @@ class Store {
 
   // ---------- Histórico ----------
   snapshot() {
-    const { tracks, clips, settings: st, name, markers, range } = this.project;
-    return JSON.stringify({ tracks, clips, settings: st, name, markers, range: range || null });
+    const { tracks, clips, settings: st, name, markers, range, sequences, seqId } = this.project;
+    return JSON.stringify({ tracks, clips, settings: st, name, markers, range: range || null, sequences: sequences || null, seqId: seqId || null });
   }
   commit(label = '') {
     if (this._batching) { this.dirty = true; return; } // dentro de batch(): um só passo no histórico
@@ -95,10 +97,12 @@ class Store {
   touch() { this.dirty = true; bus.emit('change', 'touch'); }
   restore(snap) {
     const s = JSON.parse(snap);
+    if (!s.sequences) { delete s.sequences; delete s.seqId; }
     Object.assign(this.project, s);
     for (const id of [...this.selection]) if (!this.clip(id)) this.selection.delete(id);
     bus.emit('change', 'restore');
     bus.emit('selection');
+    bus.emit('sequences');
   }
   undo() {
     if (!this.undoStack.length) return;
@@ -128,6 +132,7 @@ class Store {
     const base = newProject();
     this.project = Object.assign(base, data);
     this.project.clips.forEach((c) => normalizeClip(c));
+    (this.project.sequences || []).forEach((sq) => (sq.clips || []).forEach((c) => normalizeClip(c)));
     this.filePath = filePath; this.dirty = false;
     this.selection.clear(); this.undoStack = []; this.redoStack = []; this.undoLabels = []; this.redoLabels = []; this.time = 0;
     bus.emit('project');

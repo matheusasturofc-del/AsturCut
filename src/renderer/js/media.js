@@ -291,12 +291,12 @@ async function waveform(m) {
 
 // ---------- Elementos de reprodução por clipe ----------
 const pool = new Map(); // clipId -> { el, gain, mediaId }
-export function getPlayer(clip) {
+export function getPlayer(clip, key = clip.id) {
   const m = store.media(clip.mediaId);
   if (!m || (m.type !== 'video' && m.type !== 'audio')) return null;
-  let p = pool.get(clip.id);
+  let p = pool.get(key);
   if (p && p.mediaId === m.id) return p;
-  if (p) releasePlayer(clip.id);
+  if (p) releasePlayer(key);
   const url = mediaUrl(m);
   if (!url) return null;
   const el = document.createElement(m.type === 'video' ? 'video' : 'audio');
@@ -313,7 +313,7 @@ export function getPlayer(clip) {
   } catch (e) { console.warn('audio route', e); }
   el.addEventListener('seeked', () => { p.seeking = false; bus.emit('frame-ready'); });
   el.addEventListener('loadeddata', () => bus.emit('frame-ready'));
-  pool.set(clip.id, p);
+  pool.set(key, p);
   return p;
 }
 export function releasePlayer(id) {
@@ -324,7 +324,7 @@ export function releasePlayer(id) {
 }
 export function allPlayers() { return pool; }
 export function gcPlayers() {
-  for (const id of [...pool.keys()]) if (!store.clip(id)) releasePlayer(id);
+  for (const id of [...pool.keys()]) { const root = id.split('>')[0]; if (!store.clip(root) && !(store.p.sequences || []).some((s) => s.id === root)) releasePlayer(id); }
 }
 export function imageFor(mediaId) { return runtime.get(mediaId)?.img || null; }
 

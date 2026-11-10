@@ -3,6 +3,7 @@ import { store, bus, ASPECTS } from './store.js';
 import { $, el, icon, fmtTime, clamp, dragHandler, dropdownFrom } from './util.js';
 import { renderFrame, activeAt, sourceTime, hasMedia } from './compositor.js';
 import { getPlayer, allPlayers, gcPlayers, audioCtx } from './media.js';
+import { flattenSeqClip, mediaClipsDeep } from './sequences.js';
 import { settings } from './settings.js';
 import { valueAt, setValue, transformAt, localTime, speedAt } from './keyframes.js';
 import { routePlayer } from './audiomix.js';
@@ -168,45 +169,52 @@ function updatePlayBtn() { const b = $('#btn-play'); if (b) b.innerHTML = icon(p
 export function syncMedia(t, playing) {
   const act = activeAt(t);
   const activeIds = new Set();
+  const one = (c, tr) => {
+    const p = getPlayer(c, c.id);
+    if (!p) return;
+    activeIds.add(c.id);
+    routePlayer(p, c.trackId);
+    const lt = t - c.start;
+    const target = sourceTime(c, lt);
+    const el = p.el;
+    // volume com fade
+    let vol = valueAt(c, 'volume', clamp(lt, 0, c.duration));
+    if (c.fadeIn > 0) vol *= clamp(lt / c.fadeIn, 0, 1);
+    if (c.fadeOut > 0) vol *= clamp((c.duration - lt) / c.fadeOut, 0, 1);
+    if (lt < 0 || lt > c.duration) vol = 0;
+    if (tr.muted) vol = 0;
+    if (p.gain) p.gain.gain.value = vol; else el.volume = clamp(vol, 0, 1);
+    const rate = clamp(speedAt(c, clamp(lt, 0, c.duration)) * (player.rateMul || 1), 0.0625, 16);
+    if (Math.abs(el.playbackRate - rate) > 0.001) el.playbackRate = rate;
+    el.preservesPitch = !c.changePitch;
+    const inRange = lt >= 0 && lt < c.duration;
+    if (playing && inRange && !c.freeze) {
+      if (el.paused) { if (Math.abs(el.currentTime - target) > 0.05) el.currentTime = target; el.play().catch(() => {}); }
+      else if (Math.abs(el.currentTime - target) > 0.3 * (player.rateMul || 1)) el.currentTime = target;
+    } else {
+      if (!el.paused) el.pause();
+      if (Math.abs(el.currentTime - target) > 0.5 / store.p.settings.fps && !p.seeking) { p.seeking = true; el.currentTime = target; }
+    }
+  };
   for (const entry of act) {
     const tr = entry.track;
     for (const c of entry.items) {
-      if (!hasMedia(c)) continue;
-      const p = getPlayer(c);
-      if (!p) continue;
-      activeIds.add(c.id);
-      routePlayer(p, c.trackId);
-      const lt = t - c.start;
-      const target = sourceTime(c, lt);
-      const el = p.el;
-      // volume com fade
-      let vol = valueAt(c, 'volume', clamp(lt, 0, c.duration));
-      if (c.fadeIn > 0) vol *= clamp(lt / c.fadeIn, 0, 1);
-      if (c.fadeOut > 0) vol *= clamp((c.duration - lt) / c.fadeOut, 0, 1);
-      if (lt < 0 || lt > c.duration) vol = 0;
-      if (tr.muted || (c.type === 'video' && tr.hidden && false)) vol = 0;
-      if (p.gain) p.gain.gain.value = vol; else el.volume = clamp(vol, 0, 1);
-      const rate = clamp(speedAt(c, clamp(lt, 0, c.duration)) * (player.rateMul || 1), 0.0625, 16);
-      if (Math.abs(el.playbackRate - rate) > 0.001) el.playbackRate = rate;
-      el.preservesPitch = !c.changePitch;
-      const inRange = lt >= 0 && lt < c.duration;
-      if (playing && inRange && !c.freeze) {
-        if (el.paused) { if (Math.abs(el.currentTime - target) > 0.05) el.currentTime = target; el.play().catch(() => {}); }
-        else if (Math.abs(el.currentTime - target) > 0.3 * (player.rateMul || 1)) el.currentTime = target;
-      } else {
-        if (!el.paused) el.pause();
-        if (Math.abs(el.currentTime - target) > 0.5 / store.p.settings.fps && !p.seeking) { p.seeking = true; el.currentTime = target; }
+      if (c.type === 'sequence') {
+        // clipes de dentro da sequência aninhada
+        for (const v of flattenSeqClip(c)) if (t >= v.start - 0.02 && t < v.start + v.duration) one(v, tr);
+        continue;
       }
+      if (hasMedia(c)) one(c, tr);
     }
   }
   for (const [id, p] of allPlayers()) if (!activeIds.has(id) && !p.el.paused) p.el.pause();
   // pré-carrega clipes que vão começar em breve
   if (playing) {
-    for (const c of store.p.clips) {
-      if (!hasMedia(c) || activeIds.has(c.id)) continue;
+    for (const c of mediaClipsDeep()) {
+      if (activeIds.has(c.id)) continue;
       const dt = c.start - t;
       if (dt > 0 && dt < 1.5) {
-        const p = getPlayer(c);
+        const p = getPlayer(c, c.id);
         if (p && p.el.paused && Math.abs(p.el.currentTime - c.in) > 0.1 && !p.seeking) { p.seeking = true; p.el.currentTime = sourceTime(c, 0); }
       }
     }

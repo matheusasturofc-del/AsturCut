@@ -15,6 +15,7 @@ import { openCaptionsDialog } from '../captions.js';
 import { removeSilencesDialog } from '../silence.js';
 import { setSpeed } from '../timeline.js';
 import { freezeFrame, detectScenes } from '../protools.js';
+import { stabilize, autoReframeDialog } from '../analysis.js';
 import { initMobileTimeline, fitZoom } from './mtimeline.js';
 import { openSheet, closeSheet, sheetOpen, parkPanel } from './sheets.js';
 
@@ -172,6 +173,8 @@ function clipTools(c) {
   }
   if (c.type === 'video') list.push(tool('freeze', 'freeze', 'Congelar', () => freezeFrame()));
   if (c.type === 'video') list.push(tool('scenes', 'split', 'Detectar cenas', () => detectScenes(c)));
+  if (c.type === 'video') list.push(tool('stab', 'wand', 'Estabilizar', () => stabilize(c)));
+  if (c.type === 'video') list.push(tool('reframe', 'maximize', 'Reenquadrar', () => autoReframeDialog()));
   if (c.type === 'video' && !c.audioDetached) list.push(tool('detach', 'detach', 'Separar áudio', () => { store.detachAudio(c.id); toast(t('Áudio separado'), 'success'); }));
   if (c.type === 'audio' || c.type === 'video') list.push(tool('silence', 'silence', 'Tirar silêncios', () => removeSilencesDialog([c])));
   if (c.type === 'audio') list.push(tool('speed2x', 'forward', '2x', () => setSpeed(c, (c.speed || 1) === 2 ? 1 : 2)));

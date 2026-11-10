@@ -63,9 +63,19 @@ Para atualizar, é só abrir o instalador novo. Ele instala por cima e mantém s
 1. Mude a versão em `package.json` (por exemplo, `1.3.0`), faça o commit e envie.
 2. No GitHub, abra **Actions → Gerar instalador → Run workflow**, deixe marcado **"Publicar uma Release"** e clique em **Run workflow**.
 
-Em poucos minutos sai a **Release** `v1.3.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.3.0` também funciona.
+Em poucos minutos sai a **Release** `v1.5.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.5.0` também funciona.
 
 ## Recursos
+
+**Novidades da 1.5 — tudo que faltava do Premiere**
+- **Várias sequências no mesmo projeto** (abas acima da linha do tempo) e **sequências aninhadas**: selecione clipes → botão direito → *Aninhar*; duplo clique abre a sequência
+- **Multicâmera**: junte gravações de várias câmeras, o AsturCut **sincroniza pelo áudio** e você corta ao vivo apertando **1–9** no monitor multicâmera
+- **Rampas de velocidade** (Time Remapping) com keyframes e predefinições (lento → rápido, câmera lenta no meio...)
+- **Estabilização de vídeo** (tira a tremedeira), **rastreamento de máscara** e **reenquadramento automático** que segue a pessoa (9:16, 1:1, 4:5)
+- **Proxies**: cópias leves para editar 4K com fluidez; a exportação usa sempre o original
+- **Legendas automáticas** personalizáveis como no CapCut (destaque da palavra falada, contorno, fundo, posição, animação), em todos os clipes juntos ou cada um separado, e direto no botão direito de um vídeo/áudio
+- **Banco de mídia**: chuvisco de TV com chiado, sem sinal, barras de cor, contagens, fundos animados, tela verde/azul, preto, branco...
+- **+50 fontes** (104 no total), **54 transições**, **67 efeitos**, **50 filtros**, **48 animações**, **47 sons**, 20 setas vetoriais e centenas de emojis
 
 **Novidades da 1.4 — ferramentas profissionais**
 - **Cor estilo Lumetri**: rodas de cor (sombras, meios-tons, realces), curvas RGB e por canal, **LUTs .cube** com intensidade, antes/depois e **scopes** (forma de onda, vetorscópio e histograma) — também funciona em camadas de ajuste (clipes de filtro)

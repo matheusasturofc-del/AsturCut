@@ -197,3 +197,20 @@ export function keyFrame(clip, src, mw, mh) {
 export async function prepareKeying(clips) {
   if (clips.some((c) => c.cutout && c.cutout.on)) await ensureSegmenter();
 }
+
+// centro da pessoa no quadro (para o reenquadramento automático): { x, y, conf } em 0..1
+export async function personCenter(video) {
+  await ensureSegmenter();
+  let out = null;
+  const ts = Math.max(lastTs + 1, performance.now());
+  lastTs = ts;
+  seg.segmentForVideo(video, ts, (res) => {
+    const m = res.confidenceMasks && res.confidenceMasks[0];
+    if (!m) return;
+    const f = m.getAsFloat32Array(), w = m.width, h = m.height;
+    let sx = 0, sy = 0, s = 0;
+    for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) { const v = f[y * w + x]; if (v > 0.5) { sx += x * v; sy += y * v; s += v; } }
+    out = s > 0 ? { x: sx / s / w, y: sy / s / h, conf: Math.min(1, s / ((w * h) / 4) * 4) } : { x: 0.5, y: 0.5, conf: 0 };
+  });
+  return out || { x: 0.5, y: 0.5, conf: 0 };
+}

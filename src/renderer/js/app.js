@@ -24,6 +24,9 @@ import { openMixer } from './audiomix.js';
 import { openRecorder } from './recorder.js';
 import { openCaptionsDialog } from './captions.js';
 import { removeSilencesDialog } from './silence.js';
+import { stabilize, autoReframeDialog } from './analysis.js';
+import { newSequence, nestSelection } from './sequences.js';
+import { multicamDialog, openMulticamMonitor } from './multicam.js';
 import { freezeFrame, openHistory, detectScenes, autoDuckDialog, audioCrossfades, createProxiesDialog, toggleProxies } from './protools.js';
 import { toggleScopes } from './color.js';
 import { openExportQueue } from './exporter.js';
@@ -90,6 +93,13 @@ function mainMenu(anchor) {
       '-',
       { label: t('Congelar quadro'), shortcut: 'Shift+F', onClick: () => freezeFrame() },
       { label: t('Detectar cenas e cortar...'), onClick: () => detectScenes() },
+      { label: t('Estabilizar vídeo'), onClick: () => stabilize() },
+      { label: t('Reenquadrar automaticamente...'), onClick: () => autoReframeDialog() },
+      '-',
+      { label: t('Nova sequência'), onClick: () => newSequence() },
+      { label: t('Aninhar clipes selecionados'), onClick: () => nestSelection() },
+      { label: t('Criar sequência multicâmera...'), onClick: () => multicamDialog() },
+      { label: t('Monitor multicâmera'), onClick: () => openMulticamMonitor() },
       '-',
       { label: t('Ducking automático (abaixar música na fala)...'), onClick: () => autoDuckDialog() },
       { label: t('Crossfade de áudio nas emendas'), onClick: () => audioCrossfades() },

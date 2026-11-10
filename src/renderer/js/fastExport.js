@@ -8,6 +8,7 @@ import { player, syncMedia } from './player.js';
 import { allPlayers, masterGain, mediaUrl, api } from './media.js';
 import { valueAt, hasKf, speedAt, srcOffset } from './keyframes.js';
 import { trackAudio, GATE_CODE } from './audiomix.js';
+import { mediaClipsDeep } from './sequences.js';
 
 const SR = 48000;
 const decoded = new Map(); // mediaId -> AudioBuffer | null
@@ -67,7 +68,7 @@ export async function renderAudioOffline(start, dur, onProgress, { sampleRate = 
   master.connect(ctx.destination);
   const anySolo = store.p.tracks.some((t) => t.solo);
   const buses = new Map();
-  const clips = store.p.clips.filter((c) => (c.type === 'audio' || c.type === 'video') && c.start < start + dur && c.start + c.duration > start && (!filter || filter(c)));
+  const clips = mediaClipsDeep().filter((c) => c.start < start + dur && c.start + c.duration > start && (!filter || filter(c)));
   let i = 0;
   for (const c of clips) {
     i++;
@@ -152,7 +153,7 @@ function videoClock(t) {
 }
 
 // o vídeo tem clipes de vídeo dentro do intervalo?
-const hasVideoIn = (start, dur) => store.p.clips.some((c) => c.type === 'video' && c.start < start + dur && c.start + c.duration > start && !store.track(c.trackId)?.hidden);
+const hasVideoIn = (start, dur) => mediaClipsDeep().some((c) => c.type === 'video' && c.start < start + dur && c.start + c.duration > start && !store.track(c.trackId)?.hidden);
 
 // codifica o vídeo do intervalo; sink: { format: 'annexb' | 'avc', output(chunk, meta) }
 export async function encodeVideo(o, ui, tr, sink) {

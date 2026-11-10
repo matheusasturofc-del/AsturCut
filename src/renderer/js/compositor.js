@@ -11,6 +11,8 @@ import { transformAt, srcOffset } from './keyframes.js';
 import { needsKeying, keyFrame } from './keying.js';
 import { gradeFilter } from './color.js';
 import { drawGen } from './lib/stock.js';
+import { stabAt, maskPosAt } from './lib/motion.js';
+import { seqData, angleTracks } from './sequences.js';
 
 // clipes com "antes/depois" ativo (mostra sem correção de cor) — só em tempo de execução
 export const colorBypass = new Set();
@@ -53,8 +55,12 @@ function toneFilter(a) {
   return css;
 }
 
-const layers = [];
+const pools = [[]];
+let depth = 0; // profundidade de sequência aninhada sendo desenhada
+let CUR = { seq: null, prefix: '' };
+const trackOf = (clip) => (CUR.seq ? CUR.seq.tracks.find((x) => x.id === clip.trackId) : store.track(clip.trackId));
 function layer(i, W, H) {
+  const layers = pools[depth] || (pools[depth] = []);
   let c = layers[i];
   if (!c) { c = document.createElement('canvas'); layers[i] = c; }
   if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
@@ -64,7 +70,7 @@ function layer(i, W, H) {
   return c;
 }
 
-export const VISUAL = ['video', 'image', 'text', 'sticker', 'shape', 'effect', 'filter', 'gen'];
+export const VISUAL = ['video', 'image', 'text', 'sticker', 'shape', 'effect', 'filter', 'gen', 'sequence'];
 export const hasMedia = (c) => c.type === 'video' || c.type === 'audio';
 
 // tempo da mídia de origem para um clipe
@@ -86,12 +92,12 @@ export function transitionWindow(clip, sorted) {
 }
 
 // clipes ativos em t por trilha (incluindo sobreposição de transições)
-export function activeAt(t) {
+export function activeAt(t, seq = null) {
   const out = [];
-  const tracks = store.p.tracks;
+  const tracks = seq ? seq.tracks : store.p.tracks;
   for (let ti = tracks.length - 1; ti >= 0; ti--) {
     const tr = tracks[ti];
-    const sorted = store.clipsOn(tr.id);
+    const sorted = seq ? seq.clips.filter((c) => c.trackId === tr.id).sort((a, b) => a.start - b.start) : store.clipsOn(tr.id);
     const entry = { track: tr, items: [], trans: null };
     for (const c of sorted) {
       if (t >= c.start && t < c.start + c.duration) entry.items.push(c);
@@ -238,6 +244,7 @@ function contentSize(clip, W, H, S, ctx) {
     return { w: mw * s, h: mh * s, mw, mh };
   }
   if (clip.type === 'text') { const r = measureText(ctx, clip.text, S, { chars: 1, words: 1 }); const pad = clip.text.bg ? clip.text.bgPadding * S : 0; return { w: r.w + pad * 2, h: r.h + pad * 1.2 }; }
+  if (clip.type === 'sequence') return { w: W, h: H, mw: W, mh: H };
   if (clip.type === 'sticker') { const s = 220 * S; return { w: s, h: s }; }
   if (clip.type === 'shape') { return { w: 300 * S * 1.2, h: 300 * S * 0.9 }; }
   return { w: W, h: H };
@@ -246,11 +253,34 @@ function contentSize(clip, W, H, S, ctx) {
 function mediaSource(clip, lt) {
   if (clip.type === 'image') return imageFor(clip.mediaId);
   if (clip.type === 'video') {
-    const p = getPlayer(clip);
+    const p = getPlayer(clip, CUR.prefix + clip.id);
     if (!p || p.el.readyState < 2) return null;
     return p.el;
   }
+  if (clip.type === 'sequence') return renderNested(clip, lt);
   return null;
+}
+
+// desenha o conteúdo de uma sequência aninhada num canvas próprio
+const nestCanvases = [];
+function renderNested(clip, lt) {
+  if (depth >= 5) return null;
+  const d = seqData(clip.seqId);
+  if (!d || (CUR.stack || []).includes(clip.seqId) || clip.seqId === store.p.seqId) return null;
+  const W = store.p.settings.width, H = store.p.settings.height;
+  const k = depth + 1;
+  let cv = nestCanvases[k];
+  if (!cv) { cv = document.createElement('canvas'); nestCanvases[k] = cv; }
+  const cw = CUR.W || W, ch = CUR.H || H;
+  if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+  const innerT = clip.freeze ? (clip.in || 0) : (clip.in || 0) + srcOffset(clip, clamp(lt, 0, clip.duration));
+  const saved = CUR;
+  depth = k;
+  CUR = { seq: d, prefix: saved.prefix + clip.seqId + '>', stack: [...(saved.stack || []), clip.seqId], W: cw, H: ch };
+  let only = null;
+  if (d.multicam) { const an = angleTracks(d); only = an[Math.max(0, Math.min(an.length - 1, clip.mcAngle ?? 0))]?.id || null; }
+  try { renderFrame(cv.getContext('2d'), innerT, null, d, only); } finally { depth = k - 1; CUR = saved; }
+  return cv;
 }
 
 // desenha um clipe visual em uma camada e retorna { canvas, alpha, blend }
@@ -281,7 +311,7 @@ function renderClip(idx, clip, t, W, H, S, hits) {
   const rot = tr.rotation + anim.rot + st.rot;
 
   // fundo desfocado (trilha principal)
-  const isMain = store.track(clip.trackId)?.main;
+  const isMain = trackOf(clip)?.main;
   const src = mediaSource(clip, lt);
   if (isMain && src && store.p.settings.bgMode === 'blur' && (clip.type === 'video' || clip.type === 'image')) {
     const cover = Math.max(W / size.mw, H / size.mh) * 1.1;
@@ -296,10 +326,13 @@ function renderClip(idx, clip, t, W, H, S, hits) {
   ctx.rotate((rot * Math.PI) / 180);
   ctx.scale(sc * anim.sx * (tr.flipH ? -1 : 1), sc * anim.sy * (tr.flipV ? -1 : 1));
   ctx.filter = filterStr;
-  if (clip.type === 'video' || clip.type === 'image') {
+  if (clip.type === 'sequence') {
+    if (src) ctx.drawImage(src, -size.w / 2, -size.h / 2, size.w, size.h);
+  } else if (clip.type === 'video' || clip.type === 'image') {
     let img = src;
     if (src && needsKeying(clip)) { const kf = keyFrame(clip, src, size.mw, size.mh); if (kf && kf !== 'wait') img = kf; }
     if (img) {
+      if (clip.stab && clip.type === 'video') { const sb = stabAt(clip, sourceTime(clip, ltc)); if (sb) { ctx.scale(sb.zoom, sb.zoom); ctx.translate(sb.dx * size.w, sb.dy * size.h); } }
       const cr = clip.crop;
       if (cr && (cr.l || cr.r || cr.t || cr.b)) {
         const sx = cr.l * size.mw, sy = cr.t * size.mh, sw = size.mw * (1 - cr.l - cr.r), sh = size.mh * (1 - cr.t - cr.b);
@@ -332,7 +365,7 @@ function renderClip(idx, clip, t, W, H, S, hits) {
     if (f.overlay2) tint(ctx, W, H, f.overlay2[0], f.overlay2[1], f.overlay2[2] * k);
   }
 
-  if (clip.masks && clip.masks.length) applyMasks(lc, clip, cx, cy, rot, sc * anim.sx * (tr.flipH ? -1 : 1), sc * anim.sy * (tr.flipV ? -1 : 1), size, S, W, H);
+  if (clip.masks && clip.masks.length) applyMasks(lc, clip, cx, cy, rot, sc * anim.sx * (tr.flipH ? -1 : 1), sc * anim.sy * (tr.flipV ? -1 : 1), size, S, W, H, ltc);
 
   if (hits) hits.push({ id: clip.id, cx: W / 2 + tr.x * W, cy: H / 2 + tr.y * H, w: size.w * tr.scale, h: size.h * tr.scale, rot: tr.rotation, W, H });
   return { canvas: lc, alpha: tr.opacity * anim.alpha * st.alpha, blend: clip.blend || 'source-over' };
@@ -341,7 +374,7 @@ function renderClip(idx, clip, t, W, H, S, hits) {
 // máscaras (retângulo/elipse) com suavização, expansão, opacidade e inversão
 let maskCv = null;
 export const defaultMask = (shape = 'ellipse') => ({ id: Math.random().toString(36).slice(2, 8), shape, x: 0, y: 0, w: 0.6, h: 0.6, rot: 0, feather: 20, expand: 0, opacity: 1, invert: false });
-function applyMasks(lc, clip, cx, cy, rot, sx, sy, size, S, W, H) {
+function applyMasks(lc, clip, cx, cy, rot, sx, sy, size, S, W, H, lt = 0) {
   if (!maskCv) maskCv = document.createElement('canvas');
   if (maskCv.width !== W || maskCv.height !== H) { maskCv.width = W; maskCv.height = H; }
   const m = maskCv.getContext('2d');
@@ -351,7 +384,8 @@ function applyMasks(lc, clip, cx, cy, rot, sx, sy, size, S, W, H) {
   for (const k of clip.masks) {
     m.save();
     m.translate(cx, cy); m.rotate((rot * Math.PI) / 180); m.scale(sx, sy);
-    m.translate(k.x * size.w, k.y * size.h); m.rotate(((k.rot || 0) * Math.PI) / 180);
+    const kp = k.track ? maskPosAt(k, lt) : k;
+    m.translate(kp.x * size.w, kp.y * size.h); m.rotate(((k.rot || 0) * Math.PI) / 180);
     const ex = (k.expand || 0) * S * 2;
     const w = Math.max(1, k.w * size.w + ex), h = Math.max(1, k.h * size.h + ex);
     const scale = Math.max(0.01, Math.abs(sx));
@@ -382,8 +416,7 @@ function applyGlobal(main, clip, t, W, H, S) {
   const filters = [adjustCss(clip.adjust), clip.grade ? gradeFilter(clip.grade) : '', ...st.filter];
   if (clip.adjust.blur) filters.push(`blur(${(clip.adjust.blur / 100 * 20 * S).toFixed(1)}px)`);
   if (clip.filter && FILTER_MAP[clip.filter.id]) filters.push(filterCss(FILTER_MAP[clip.filter.id], clip.filter.intensity ?? 1));
-  ctx.fillStyle = store.p.settings.background || '#000';
-  ctx.fillRect(0, 0, W, H);
+  if (depth === 0) { ctx.fillStyle = store.p.settings.background || '#000'; ctx.fillRect(0, 0, W, H); }
   ctx.save();
   ctx.translate(W / 2 + st.dx, H / 2 + st.dy);
   ctx.rotate((st.rot * Math.PI) / 180);
@@ -407,17 +440,22 @@ function applyGlobal(main, clip, t, W, H, S) {
 }
 
 // ---------- Renderização de quadro ----------
-export function renderFrame(main, t, hits = null) {
+export function renderFrame(main, t, hits = null, seq = null, only = null) {
   const W = main.canvas.width, H = main.canvas.height;
   const S = Math.min(W, H) / 1080;
   main.setTransform(1, 0, 0, 1, 0, 0);
   main.globalAlpha = 1; main.globalCompositeOperation = 'source-over'; main.filter = 'none';
-  main.fillStyle = store.p.settings.background || '#000';
-  main.fillRect(0, 0, W, H);
-  const act = activeAt(t);
+  if (seq) main.clearRect(0, 0, W, H);
+  else {
+    main.fillStyle = store.p.settings.background || '#000';
+    main.fillRect(0, 0, W, H);
+    CUR = { seq: null, prefix: '', stack: [], W, H };
+    depth = 0;
+  }
+  const act = activeAt(t, seq);
   for (const entry of act) {
     const tr = entry.track;
-    if (tr.type !== 'video' || tr.hidden) continue;
+    if (tr.type !== 'video' || (tr.hidden && !only) || (only && tr.id !== only)) continue;
     const vis = entry.items.filter((c) => VISUAL.includes(c.type));
     if (!vis.length) continue;
     if (entry.trans) {
