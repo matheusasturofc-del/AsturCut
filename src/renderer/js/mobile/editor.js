@@ -16,6 +16,8 @@ import { removeSilencesDialog } from '../silence.js';
 import { setSpeed } from '../timeline.js';
 import { freezeFrame, detectScenes } from '../protools.js';
 import { stabilize, autoReframeDialog } from '../analysis.js';
+import { textEditDialog } from '../textedit.js';
+import { splitLayoutDialog, beatsDialog, normalizeDialog, closeAllGaps, exportFrame, autoEnhance } from '../extras.js';
 import { initMobileTimeline, fitZoom } from './mtimeline.js';
 import { openSheet, closeSheet, sheetOpen, parkPanel } from './sheets.js';
 
@@ -122,6 +124,12 @@ function rootTools() {
     tool('aspect', 'fit', 'Proporção', () => aspectSheet()),
     tool('bg', 'palette', 'Fundo', () => bgSheet()),
     tool('silence', 'silence', 'Tirar silêncios', () => removeSilencesDialog()),
+    tool('textedit', 'text', 'Editar pelo texto', () => textEditDialog()),
+    tool('layout', 'gridview', 'Tela dividida', () => splitLayoutDialog()),
+    tool('beats', 'music', 'Batidas', () => beatsDialog()),
+    tool('normalize', 'volume', 'Normalizar volume', () => normalizeDialog()),
+    tool('gaps', 'closeGaps', 'Fechar espaços', () => closeAllGaps()),
+    tool('frame', 'image', 'Salvar quadro', () => exportFrame()),
   ];
 }
 
@@ -175,6 +183,8 @@ function clipTools(c) {
   if (c.type === 'video') list.push(tool('freeze', 'freeze', 'Congelar', () => freezeFrame()));
   if (c.type === 'video') list.push(tool('scenes', 'split', 'Detectar cenas', () => detectScenes(c)));
   if (c.type === 'video') list.push(tool('stab', 'wand', 'Estabilizar', () => stabilize(c)));
+  if (c.type === 'video' || c.type === 'image') list.push(tool('auto', 'sparkle', 'Ajuste automático', () => autoEnhance(c)));
+  if (c.type === 'video' || c.type === 'audio') list.push(tool('textedit', 'text', 'Editar pelo texto', () => { store.select([c.id]); textEditDialog(); }));
   if (c.type === 'video') list.push(tool('reframe', 'maximize', 'Reenquadrar', () => autoReframeDialog()));
   if (c.type === 'video' && !c.audioDetached) list.push(tool('detach', 'detach', 'Separar áudio', () => { store.detachAudio(c.id); toast(t('Áudio separado'), 'success'); }));
   if (c.type === 'audio' || c.type === 'video') list.push(tool('silence', 'silence', 'Tirar silêncios', () => removeSilencesDialog([c])));

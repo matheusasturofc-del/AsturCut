@@ -227,10 +227,14 @@ public class AsturNativePlugin extends Plugin {
             ContentValues cv = new ContentValues();
             cv.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
             cv.put(MediaStore.MediaColumns.MIME_TYPE, mime);
-            cv.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/AsturCut");
+            boolean isImage = mime.startsWith("image/"), isVideo = mime.startsWith("video/");
+            cv.put(MediaStore.MediaColumns.RELATIVE_PATH, (isImage ? Environment.DIRECTORY_PICTURES : isVideo ? Environment.DIRECTORY_MOVIES : Environment.DIRECTORY_DOWNLOADS) + "/AsturCut");
             cv.put(MediaStore.MediaColumns.IS_PENDING, 1);
             ContentResolver cr = getContext().getContentResolver();
-            Uri uri = cr.insert(MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), cv);
+            Uri coll = isImage ? MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                : isVideo ? MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                : MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+            Uri uri = cr.insert(coll, cv);
             if (uri == null) throw new Exception("MediaStore");
             Save s = new Save();
             s.uri = uri;

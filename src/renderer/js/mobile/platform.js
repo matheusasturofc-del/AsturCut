@@ -107,6 +107,13 @@
     openFile: function (p) { return N.open({ path: p }); },
     openExternal: function (url) { return N.openUrl({ url: url }); },
     saveBytes: saveBytes,
+    // quadro PNG, legendas .srt, capítulos, XML: imagens vão para Fotos, o resto para Downloads/AsturCut
+    saveAs: async function (o) {
+      var ext = o.ext || 'bin';
+      var mime = { png: 'image/png', jpg: 'image/jpeg', srt: 'application/x-subrip', txt: 'text/plain', xml: 'text/xml' }[ext] || 'application/octet-stream';
+      var bytes = o.text != null ? new TextEncoder().encode(String(o.text)) : new Uint8Array(o.data);
+      return saveBytes((o.name || 'arquivo') + '.' + ext, mime, bytes);
+    },
     // plano B (MediaRecorder em tempo real): salva o WebM direto na galeria
     exportChoose: async function (o) { return (o.name || 'video') + '.' + (o.format === 'webm' ? 'webm' : 'mp4'); },
     exportBegin: async function () { rtExport = []; return true; },
