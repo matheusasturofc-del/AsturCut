@@ -16,9 +16,9 @@ let lang = 'pt';
 
 // Textos dos diálogos nativos
 const L = {
-  pt: { importMedia: 'Importar mídia', media: 'Mídia', videos: 'Vídeos', audio: 'Áudio', images: 'Imagens', all: 'Todos', importFonts: 'Importar fontes', fonts: 'Fontes', saveProject: 'Salvar projeto', openProject: 'Abrir projeto', projectType: 'Projeto AsturCut', exportVideo: 'Exportar vídeo', project: 'Projeto', noExport: 'Nenhuma exportação em andamento', ffmpegFail: 'FFmpeg falhou: ' },
-  en: { importMedia: 'Import media', media: 'Media', videos: 'Videos', audio: 'Audio', images: 'Images', all: 'All files', importFonts: 'Import fonts', fonts: 'Fonts', saveProject: 'Save project', openProject: 'Open project', projectType: 'AsturCut project', exportVideo: 'Export video', project: 'Project', noExport: 'No export in progress', ffmpegFail: 'FFmpeg failed: ' },
-  es: { importMedia: 'Importar medios', media: 'Medios', videos: 'Videos', audio: 'Audio', images: 'Imágenes', all: 'Todos', importFonts: 'Importar fuentes', fonts: 'Fuentes', saveProject: 'Guardar proyecto', openProject: 'Abrir proyecto', projectType: 'Proyecto AsturCut', exportVideo: 'Exportar video', project: 'Proyecto', noExport: 'No hay ninguna exportación en curso', ffmpegFail: 'FFmpeg falló: ' },
+  pt: { importMedia: 'Importar mídia', media: 'Mídia', videos: 'Vídeos', audio: 'Áudio', images: 'Imagens', all: 'Todos', importFonts: 'Importar fontes', fonts: 'Fontes', saveProject: 'Salvar projeto', openProject: 'Abrir projeto', projectType: 'Projeto AsturCut', exportVideo: 'Exportar vídeo', project: 'Projeto', noExport: 'Nenhuma exportação em andamento', ffmpegFail: 'FFmpeg falhou: ', collectTitle: 'Escolha a pasta onde o projeto e a mídia serão copiados' },
+  en: { importMedia: 'Import media', media: 'Media', videos: 'Videos', audio: 'Audio', images: 'Images', all: 'All files', importFonts: 'Import fonts', fonts: 'Fonts', saveProject: 'Save project', openProject: 'Open project', projectType: 'AsturCut project', exportVideo: 'Export video', project: 'Project', noExport: 'No export in progress', ffmpegFail: 'FFmpeg failed: ', collectTitle: 'Choose the folder to copy the project and media to' },
+  es: { importMedia: 'Importar medios', media: 'Medios', videos: 'Videos', audio: 'Audio', images: 'Imágenes', all: 'Todos', importFonts: 'Importar fuentes', fonts: 'Fuentes', saveProject: 'Guardar proyecto', openProject: 'Abrir proyecto', projectType: 'Proyecto AsturCut', exportVideo: 'Exportar video', project: 'Proyecto', noExport: 'No hay ninguna exportación en curso', ffmpegFail: 'FFmpeg falló: ', collectTitle: 'Elige la carpeta donde se copiarán el proyecto y los medios' },
 };
 const tr = (k) => (L[lang] || L.pt)[k];
 
@@ -551,6 +551,31 @@ ipcMain.handle('file:open-text', async (_e, { exts }) => {
   const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: exts.join(', ').toUpperCase(), extensions: exts }] });
   if (r.canceled || !r.filePaths?.[0]) return null;
   return { name: path.basename(r.filePaths[0]), text: await fs.promises.readFile(r.filePaths[0], 'utf8') };
+});
+
+// ---------- Coletar arquivos: copia toda a mídia do projeto para uma pasta ----------
+ipcMain.handle('project:collect', async (e, { name, files }) => {
+  const r = await dialog.showOpenDialog(win, { title: tr('collectTitle') || 'Coletar arquivos', properties: ['openDirectory', 'createDirectory'] });
+  if (r.canceled || !r.filePaths?.[0]) return null;
+  const safe = String(name || 'Projeto').replace(/[\\/:*?"<>|]/g, '-');
+  const root = path.join(r.filePaths[0], safe);
+  const mdir = path.join(root, lang === 'en' ? 'Media' : lang === 'es' ? 'Medios' : 'Mídia');
+  await fs.promises.mkdir(mdir, { recursive: true });
+  const map = {}, used = new Set();
+  let i = 0;
+  for (const f of files) {
+    i++;
+    try {
+      let base = path.basename(f), n = 1;
+      while (used.has(base.toLowerCase())) { const ext = path.extname(f); base = path.basename(f, ext) + ` (${++n})` + ext; }
+      used.add(base.toLowerCase());
+      const dst = path.join(mdir, base);
+      if (path.resolve(dst) !== path.resolve(f)) await fs.promises.copyFile(f, dst);
+      map[f] = dst;
+    } catch {}
+    e.sender.send('proxy:progress', { id: 'collect', p: i / files.length });
+  }
+  return { root, project: path.join(root, safe + '.astur'), map };
 });
 
 // ---------- Inverter (tocar de trás para frente) um trecho de mídia ----------

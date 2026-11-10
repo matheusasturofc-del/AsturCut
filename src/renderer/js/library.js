@@ -3,7 +3,7 @@ import { store, bus } from './store.js';
 import { t } from './i18n.js';
 import { $, el, icon, fmtShort, fmtBytes, contextMenu, toast, ease, promptDialog } from './util.js';
 import { openSource } from './source.js';
-import { removeProxy } from './media.js';
+import { removeProxy, replaceMedia } from './media.js';
 import { createProxiesDialog } from './protools.js';
 import { runtime, importViaDialog, importDropped, BACKGROUNDS, addBackground, drawBackground, importFonts, customFonts, isDesktop, api } from './media.js';
 import { settings } from './settings.js';
@@ -249,6 +249,7 @@ function renderMedia() {
       { label: 'Mover para pasta', submenu: [{ label: t('Mídia') + ' (raiz)', onClick: () => { delete m.binId; store.dirty = true; renderContent(); } }, ...store.p.bins.map((b) => ({ label: b.name, checked: m.binId === b.id, onClick: () => { m.binId = b.id; store.dirty = true; renderContent(); } })), '-', { label: t('Nova pasta...'), onClick: () => newBin(m) }] },
       isDesktop && !api.isMobile && m.type === 'video' && m.path ? (m.proxy ? { label: 'Remover proxy', onClick: () => removeProxy(m) } : { label: 'Criar proxy (edição leve)', onClick: () => createProxiesDialog([m]) }) : null,
       isDesktop && !api.isMobile && m.path ? { label: 'Mostrar na pasta', onClick: () => api.showItem(m.path) } : null,
+      isDesktop && !api.isMobile && !m.gen && !m.genImg ? { label: m.missing ? 'Reconectar arquivo...' : 'Substituir mídia...', onClick: () => replaceMedia(m) } : null,
       '-',
       { label: t('Informações: {info}', { info: `${m.width ? m.width + '×' + m.height + ' · ' : ''}${fmtBytes(m.size)}` }), disabled: true },
       { label: 'Remover do projeto', onClick: () => { store.begin(); store.p.clips = store.p.clips.filter((c) => c.mediaId !== m.id); store.p.media = store.p.media.filter((x) => x !== m); store.commit('rmmedia'); bus.emit('media'); } },

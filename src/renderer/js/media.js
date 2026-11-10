@@ -465,3 +465,59 @@ export async function addBackground(specId) {
 export async function restoreGenerated() {
   for (const m of store.p.media) if (m.genImg) { const r = await genImage(m.genImg); runtime.set(m.id, { url: r.url, img: r.img, thumb: r.thumb }); }
 }
+
+// ---------- Substituir / reconectar mídia ----------
+export async function replaceMedia(m) {
+  if (!isDesktop || !api.importMedia) { toast(t('Substituir mídia funciona no aplicativo para PC'), 'error'); return; }
+  const files = await api.importMedia();
+  const f = files && files[0];
+  if (!f) return;
+  const type = typeFromExt(f.ext);
+  if (!type || (type === 'image') !== (m.type === 'image')) { toast(t('Escolha um arquivo do mesmo tipo (vídeo, áudio ou imagem)'), 'error'); return; }
+  const wasMissing = m.missing;
+  const oldPath = m.path;
+  store.begin();
+  Object.assign(m, { path: f.path, name: f.name, ext: f.ext, size: f.size, type });
+  delete m.proxy;
+  runtime.delete(m.id);
+  store.commit('replace-media');
+  refreshPlayers();
+  try { await probe(m); analyze(m); } catch { m.missing = true; }
+  bus.emit('media');
+  // reconecta outros arquivos ausentes que estejam na mesma pasta nova
+  let n = 0;
+  if (wasMissing && oldPath) {
+    const sep = f.path.includes('\\') ? '\\' : '/';
+    const dir = f.path.slice(0, f.path.lastIndexOf(sep) + 1);
+    const others = store.p.media.filter((x) => x !== m && x.missing && x.path);
+    if (others.length) {
+      const cand = others.map((x) => dir + x.path.split(/[\\/]/).pop());
+      const found = new Set((await api.describeFiles(cand).catch(() => [])).map((d) => d.path));
+      for (const x of others) {
+        const p = dir + x.path.split(/[\\/]/).pop();
+        if (!found.has(p)) continue;
+        x.path = p; runtime.delete(x.id);
+        try { await probe(x); analyze(x); n++; } catch {}
+      }
+      if (n) refreshPlayers();
+    }
+  }
+  store.dirty = true;
+  bus.emit('media');
+  toast(n ? t('Mídia reconectada (+{n} arquivo(s) encontrados na mesma pasta)', { n }) : t('Mídia substituída'), 'success');
+}
+
+// ---------- Coletar arquivos (copiar projeto + mídia para uma pasta) ----------
+export async function collectFiles() {
+  if (!isDesktop || !api.collectFiles) { toast(t('Coletar arquivos funciona no aplicativo para PC'), 'error'); return null; }
+  const list = [...new Set(store.p.media.filter((m) => m.path && !m.missing).map((m) => m.path))];
+  if (!list.length) { toast(t('O projeto não tem arquivos de mídia'), 'error'); return null; }
+  const tst = toast(t('Copiando {n} arquivo(s)...', { n: list.length }), 'info', 120000);
+  try {
+    const r = await api.collectFiles({ name: store.p.name, files: list });
+    if (!r) return null;
+    for (const m of store.p.media) if (m.path && r.map[m.path]) m.path = r.map[m.path];
+    store.dirty = true;
+    return r;
+  } finally { tst.remove(); }
+}

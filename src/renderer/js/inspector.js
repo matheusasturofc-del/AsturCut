@@ -15,7 +15,7 @@ import { openTab } from './library.js';
 import { player, startPick } from './player.js';
 import { DEFAULT_CHROMA, DEFAULT_CUTOUT, cutoutState, ensureSegmenter, keyBypass } from './keying.js';
 import { hasKf, anyKf, valueAt, setValue, toggleAnim, toggleKey, keyAtCursor, jumpKey, localTime, EASINGS, setEaseAtCursor, easeAtCursor } from './keyframes.js';
-import { colorBypass, defaultMask } from './compositor.js';
+import { colorBypass, defaultMask, MASK_SHAPES } from './compositor.js';
 import { defaultGrade, colorWheel, curvesEditor, importLut, toggleScopes } from './color.js';
 import { captionsPanel } from './captions.js';
 import { stabilize, trackMask, autoReframeDialog } from './analysis.js';
@@ -426,6 +426,12 @@ function speedTab(c) {
       el('button', { class: 'chip', onclick: () => ramp([[0, 2.5], [1, 0.4]]) }, t('Rápido → lento')),
       el('button', { class: 'chip', onclick: () => ramp([[0, 3], [0.35, 3], [0.45, 0.3], [0.6, 0.3], [0.7, 3], [1, 3]]) }, t('Montagem (rápido-lento-rápido)')),
       el('button', { class: 'chip', onclick: () => ramp([[0, 1], [0.4, 1], [0.5, 0.2], [0.65, 0.2], [0.75, 1], [1, 1]]) }, t('Câmera lenta no meio')),
+      el('button', { class: 'chip', onclick: () => ramp([[0, 1], [0.3, 1], [0.38, 0.15], [0.62, 0.15], [0.7, 1], [1, 1]]) }, t('Herói')),
+      el('button', { class: 'chip', onclick: () => ramp([[0, 4], [0.2, 4], [0.3, 0.1], [0.7, 0.1], [0.8, 4], [1, 4]]) }, t('Bala (bullet time)')),
+      el('button', { class: 'chip', onclick: () => ramp([[0, 0.8], [0.45, 0.8], [0.5, 6], [0.55, 0.8], [1, 0.8]]) }, t('Salto')),
+      el('button', { class: 'chip', onclick: () => ramp([[0, 6], [0.3, 1], [1, 1]]) }, t('Flash in')),
+      el('button', { class: 'chip', onclick: () => ramp([[0, 1], [0.7, 1], [1, 6]]) }, t('Flash out')),
+      el('button', { class: 'chip', onclick: () => ramp([[0, 0.5], [0.25, 2], [0.5, 0.5], [0.75, 2], [1, 0.5]]) }, t('Pulso')),
       hasKf(c, 'speed') ? el('button', { class: 'chip', onclick: () => ramp(null) }, t('Remover rampa')) : null),
   ));
 }
@@ -520,19 +526,27 @@ function stabSection(c) {
 // ---------- Máscaras ----------
 function masksSection(c) {
   const list = c.masks || [];
-  const add = (shape) => { store.begin(); c.masks = [...(c.masks || []), defaultMask(shape)]; store.commit('mask'); };
+  const add = (shape, extra = {}) => { store.begin(); c.masks = [...(c.masks || []), { ...defaultMask(shape), ...extra }]; store.commit('mask'); };
+  const shapeSel = el('select', { class: 'select sm', onchange: () => { if (shapeSel.value) add(shapeSel.value); shapeSel.value = ''; } },
+    el('option', { value: '' }, '+ ' + t('Outra forma...')), MASK_SHAPES.slice(2).map(([v, n]) => el('option', { value: v }, t(n))));
   const box = section(t('Máscaras'),
     el('div', { class: 'btn-row' },
       el('button', { class: 'btn sm', onclick: () => add('ellipse') }, '+ ' + t('Elipse')),
-      el('button', { class: 'btn sm', onclick: () => add('rect') }, '+ ' + t('Retângulo'))));
+      el('button', { class: 'btn sm', onclick: () => add('rect') }, '+ ' + t('Retângulo')), shapeSel),
+    el('div', { class: 'btn-row' },
+      el('button', { class: 'btn sm', title: t('Desfoca só uma parte (ex.: rosto ou placa). Use "Rastrear" para seguir o movimento.'), onclick: () => add('ellipse', { mode: 'blur', w: 0.28, h: 0.36, feather: 8, amount: 40 }) }, '◍ ' + t('Desfocar área')),
+      el('button', { class: 'btn sm', title: t('Pixeliza só uma parte (censura)'), onclick: () => add('rect', { mode: 'pixel', w: 0.28, h: 0.36, feather: 0, amount: 30 }) }, '▦ ' + t('Pixelar área'))));
   list.forEach((m, i) => {
     const set = (patch) => { Object.assign(m, patch); store.touch(); };
     box.append(el('div', { class: 'fx-item' },
-      el('div', { class: 'fx-head' }, el('b', {}, `${t('Máscara')} ${i + 1} · ${m.shape === 'rect' ? t('Retângulo') : t('Elipse')}`), el('div', { class: 'grow' }),
+      el('div', { class: 'fx-head' }, el('b', {}, `${t('Máscara')} ${i + 1} · ${t((MASK_SHAPES.find((x) => x[0] === m.shape) || MASK_SHAPES[0])[1])}`), el('div', { class: 'grow' }),
         el('button', { class: 'btn sm' + (m.invert ? ' on' : ''), onclick: () => { store.begin(); m.invert = !m.invert; store.commit('mask'); } }, t('Inverter')),
         c.type === 'video' ? el('button', { class: 'btn sm' + (m.track ? ' on' : ''), title: t('Faz a máscara seguir o objeto que está embaixo dela'), onclick: () => trackMask(c, m) }, '◎ ' + t(m.track ? 'Rastrear de novo' : 'Rastrear')) : null,
         m.track ? el('button', { class: 'btn sm', onclick: () => { store.begin(); delete m.track; store.commit('mask'); } }, t('Parar de rastrear')) : null,
         el('button', { class: 'icon-btn xs', title: t('Excluir'), onclick: () => { store.begin(); c.masks.splice(i, 1); store.commit('mask'); }, html: icon('trash', 13) })),
+      segmented(t('Tipo:'), m.mode || 'alpha', [['alpha', t('Recorte')], ['blur', t('Desfoque')], ['pixel', t('Pixelado')]], (v) => { store.begin(); m.mode = v === 'alpha' ? undefined : v; if (v !== 'alpha' && m.amount == null) m.amount = 40; store.commit('mask'); }),
+      select(t('Forma:'), m.shape, MASK_SHAPES.map(([v, n]) => [v, t(n)]), (v) => { store.begin(); m.shape = v; store.commit('mask'); }),
+      m.mode ? slider(t('Intensidade'), m.amount ?? 40, { min: 2, max: 120, def: 40, onInput: (v) => set({ amount: v }) }) : null,
       slider('Posição X', Math.round(m.x * 100), { min: -100, max: 100, def: 0, onInput: (v) => set({ x: v / 100 }) }),
       slider('Posição Y', Math.round(m.y * 100), { min: -100, max: 100, def: 0, onInput: (v) => set({ y: v / 100 }) }),
       slider('Largura', Math.round(m.w * 100), { min: 2, max: 200, unit: '%', def: 60, onInput: (v) => set({ w: v / 100 }) }),

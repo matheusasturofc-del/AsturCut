@@ -9,7 +9,7 @@ import { initTimeline, setMode, zoom, fit } from './timeline.js';
 import { initInspector } from './inspector.js';
 import { openExportDialog } from './exporter.js';
 import { openCustomize } from './customize.js';
-import { importViaDialog, importDropped, loadUserFonts, isDesktop, isMobile, canRecordScreen, api } from './media.js';
+import { importViaDialog, importDropped, loadUserFonts, isDesktop, isMobile, canRecordScreen, api, collectFiles, refreshPlayers } from './media.js';
 import { addText } from './actions.js';
 import { t, initLang, detectLang, startAutoTranslate } from './i18n.js';
 import { saveProject, newProject, openProject, confirmDiscard, getRecent, scheduleRecovery, clearRecovery, defaultName } from './projects.js';
@@ -77,6 +77,7 @@ function mainMenu(anchor) {
     isDesktop ? { label: t('Projetos recentes'), submenu: recentItems() } : null,
     { label: t('Salvar'), shortcut: 'Ctrl+S', onClick: () => saveProject() },
     { label: t('Salvar como...'), shortcut: 'Ctrl+Shift+S', onClick: () => saveProject(true) },
+    isDesktop && !isMobile ? { label: t('Coletar arquivos e salvar em uma pasta...'), onClick: async () => { const r = await collectFiles(); if (r) { store.filePath = r.project; refreshPlayers(); if (await saveProject()) toast(t('Projeto e mídia copiados para {p}', { p: r.root }), 'success', 5000); } } } : null,
     '-',
     { label: t('Importar mídia...'), shortcut: 'Ctrl+I', onClick: () => importViaDialog() },
     { label: t('Exportar...'), shortcut: 'Ctrl+E', onClick: () => openExportDialog() },

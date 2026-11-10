@@ -374,14 +374,35 @@ function renderClip(idx, clip, t, W, H, S, hits) {
 // máscaras (retângulo/elipse) com suavização, expansão, opacidade e inversão
 let maskCv = null;
 export const defaultMask = (shape = 'ellipse') => ({ id: Math.random().toString(36).slice(2, 8), shape, x: 0, y: 0, w: 0.6, h: 0.6, rot: 0, feather: 20, expand: 0, opacity: 1, invert: false });
-function applyMasks(lc, clip, cx, cy, rot, sx, sy, size, S, W, H, lt = 0) {
+export const MASK_SHAPES = [['ellipse', 'Elipse'], ['rect', 'Retângulo'], ['rounded', 'Arredondado'], ['heart', 'Coração'], ['star', 'Estrela'], ['triangle', 'Triângulo'], ['diamond', 'Losango'], ['hexagon', 'Hexágono']];
+function maskPath(m, shape, w, h) {
+  m.beginPath();
+  if (shape === 'rect') m.rect(-w / 2, -h / 2, w, h);
+  else if (shape === 'rounded') { const r = Math.min(w, h) * 0.18; if (m.roundRect) m.roundRect(-w / 2, -h / 2, w, h, r); else m.rect(-w / 2, -h / 2, w, h); }
+  else if (shape === 'heart') {
+    const x = -w / 2, y = -h / 2;
+    m.moveTo(0, y + h * 0.3);
+    m.bezierCurveTo(0, y, x, y, x, y + h * 0.32);
+    m.bezierCurveTo(x, y + h * 0.62, 0, y + h * 0.8, 0, y + h);
+    m.bezierCurveTo(0, y + h * 0.8, -x, y + h * 0.62, -x, y + h * 0.32);
+    m.bezierCurveTo(-x, y, 0, y, 0, y + h * 0.3);
+  } else if (shape === 'star') {
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + (i * Math.PI) / 5, r = i % 2 ? 0.42 : 1; m.lineTo(Math.cos(a) * r * w / 2, Math.sin(a) * r * h / 2); }
+    m.closePath();
+  } else if (shape === 'triangle') { m.moveTo(0, -h / 2); m.lineTo(w / 2, h / 2); m.lineTo(-w / 2, h / 2); m.closePath(); }
+  else if (shape === 'diamond') { m.moveTo(0, -h / 2); m.lineTo(w / 2, 0); m.lineTo(0, h / 2); m.lineTo(-w / 2, 0); m.closePath(); }
+  else if (shape === 'hexagon') { for (let i = 0; i < 6; i++) { const a = (i * Math.PI) / 3; m.lineTo(Math.cos(a) * w / 2, Math.sin(a) * h / 2); } m.closePath(); }
+  else m.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+}
+// desenha as máscaras da lista em maskCv (branco = visível)
+function buildMask(list, cx, cy, rot, sx, sy, size, S, W, H, lt, censor) {
   if (!maskCv) maskCv = document.createElement('canvas');
   if (maskCv.width !== W || maskCv.height !== H) { maskCv.width = W; maskCv.height = H; }
   const m = maskCv.getContext('2d');
   m.setTransform(1, 0, 0, 1, 0, 0); m.globalCompositeOperation = 'source-over'; m.filter = 'none'; m.globalAlpha = 1;
   m.clearRect(0, 0, W, H);
-  if (clip.masks.every((k) => k.invert)) { m.fillStyle = '#fff'; m.fillRect(0, 0, W, H); }
-  for (const k of clip.masks) {
+  if (!censor && list.every((k) => k.invert)) { m.fillStyle = '#fff'; m.fillRect(0, 0, W, H); }
+  for (const k of list) {
     m.save();
     m.translate(cx, cy); m.rotate((rot * Math.PI) / 180); m.scale(sx, sy);
     const kp = k.track ? maskPosAt(k, lt) : k;
@@ -391,18 +412,41 @@ function applyMasks(lc, clip, cx, cy, rot, sx, sy, size, S, W, H, lt = 0) {
     const scale = Math.max(0.01, Math.abs(sx));
     m.filter = k.feather > 0 ? `blur(${(k.feather * S / scale).toFixed(1)}px)` : 'none';
     m.globalAlpha = k.opacity ?? 1;
-    m.globalCompositeOperation = k.invert ? 'destination-out' : 'source-over';
+    m.globalCompositeOperation = !censor && k.invert ? 'destination-out' : 'source-over';
     m.fillStyle = '#fff';
-    m.beginPath();
-    if (k.shape === 'rect') m.rect(-w / 2, -h / 2, w, h); else m.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+    maskPath(m, k.shape, w, h);
     m.fill();
     m.restore();
   }
+  return maskCv;
+}
+function applyMasks(lc, clip, cx, cy, rot, sx, sy, size, S, W, H, lt = 0) {
+  const censor = clip.masks.filter((k) => k.mode === 'blur' || k.mode === 'pixel');
+  const alpha = clip.masks.filter((k) => !(k.mode === 'blur' || k.mode === 'pixel'));
   const c = lc.getContext('2d');
+  // censura: desfoca/pixeliza só dentro da máscara (ex.: esconder um rosto ou uma placa)
+  for (const k of censor) {
+    const fx = layer(7, W, H), fc = fx.getContext('2d');
+    const amt = Math.max(1, (k.amount ?? 40));
+    if (k.mode === 'pixel') {
+      const tiny = layer(8, Math.max(1, Math.round(W / (amt * S * 1.1 + 2))), Math.max(1, Math.round(H / (amt * S * 1.1 + 2))));
+      const tc = tiny.getContext('2d'); tc.imageSmoothingEnabled = true; tc.drawImage(lc, 0, 0, tiny.width, tiny.height);
+      fc.imageSmoothingEnabled = false; fc.drawImage(tiny, 0, 0, W, H); fc.imageSmoothingEnabled = true;
+    } else { fc.filter = `blur(${(amt * S * 0.8).toFixed(1)}px)`; fc.drawImage(lc, 0, 0); fc.filter = 'none'; }
+    const mk = buildMask([k], cx, cy, rot, sx, sy, size, S, W, H, lt, true);
+    fc.globalCompositeOperation = k.invert ? 'destination-out' : 'destination-in';
+    fc.drawImage(mk, 0, 0);
+    fc.globalCompositeOperation = 'source-over';
+    c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.filter = 'none'; c.globalAlpha = 1; c.globalCompositeOperation = 'source-atop';
+    c.drawImage(fx, 0, 0);
+    c.restore();
+  }
+  if (!alpha.length) return;
+  const mk = buildMask(alpha, cx, cy, rot, sx, sy, size, S, W, H, lt, false);
   c.save();
   c.setTransform(1, 0, 0, 1, 0, 0); c.filter = 'none'; c.globalAlpha = 1;
   c.globalCompositeOperation = 'destination-in';
-  c.drawImage(maskCv, 0, 0);
+  c.drawImage(mk, 0, 0);
   c.restore();
 }
 
