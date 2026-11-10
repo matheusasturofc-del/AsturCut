@@ -27,6 +27,7 @@ export const ACTIONS = [
   ['freeze', 'Congelar quadro', ['Shift+F']],
   ['history', 'Histórico de ações', ['Ctrl+H']],
   ['exportFrame', 'Exportar quadro como imagem', ['Ctrl+Shift+E']],
+  ['palette', 'Buscar comando', ['Ctrl+Shift+P', 'F1']],
   ['reverse', 'Inverter clipe (de trás para frente)', ['Ctrl+Alt+R']],
   ['chapters', 'Capítulos do YouTube', ['Ctrl+Shift+M']],
   ['toolForward', 'Ferramenta selecionar à frente', ['A']],

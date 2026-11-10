@@ -1,6 +1,6 @@
 // AsturCut — inicialização da interface
 import { store, bus } from './store.js';
-import { $, el, icon, toast, promptDialog, dropdownFrom, confirmDialog } from './util.js';
+import { $, el, icon, toast, promptDialog, dropdownFrom, confirmDialog, modal } from './util.js';
 import { settings, applyTheme } from './settings.js';
 import { initLayout, usePreset, togglePanel, LAYOUT_PRESETS } from './layout.js';
 import { initLibrary, openTab } from './library.js';
@@ -16,7 +16,7 @@ import { saveProject, newProject, openProject, confirmDiscard, getRecent, schedu
 import { showHome, hideHome, isHomeVisible } from './home.js';
 import { mobileUI } from './mobile/detect.js';
 import { initMobileEditor } from './mobile/editor.js';
-import { actionFor, GLOBAL } from './keymap.js';
+import { actionFor, GLOBAL, ACTIONS } from './keymap.js';
 import { openNewProjectDialog } from './newProject.js';
 import { checkForUpdates, startUpdateChecks } from './updates.js';
 import { speedDialog, gainDialog, setLabel, LABELS, pasteAttributesDialog } from './editTools.js';
@@ -42,6 +42,7 @@ function buildTitlebar() {
     el('div', { class: 'tb-left' },
       el('button', { class: 'tb-logo', title: t('Tela inicial'), onclick: () => showHome() }, el('img', { src: 'assets/logo.svg', width: 18, height: 18 }), el('span', {}, 'AsturCut')),
       el('button', { class: 'tb-menu tb-editor', onclick: (e) => mainMenu(e.currentTarget) }, t('Menu'), el('span', { html: icon('chevDown', 12) })),
+      el('button', { class: 'icon-btn tb-editor tb-search', title: t('Buscar comando') + ' (Ctrl+Shift+P)', onclick: () => openPalette(), html: icon('search', 16) }),
     ),
     el('div', { class: 'tb-center' }, nameEl, el('span', { class: 'tb-dirty tb-editor', id: 'tb-dirty', title: t('Alterações não salvas') })),
     el('div', { class: 'tb-right' },
@@ -71,8 +72,9 @@ function recentItems() {
   return rec.slice(0, 10).map((r) => ({ label: r.name + '  —  ' + r.path, onClick: () => openProject(r.path) }));
 }
 
-function mainMenu(anchor) {
-  dropdownFrom(anchor, [
+function mainMenu(anchor) { dropdownFrom(anchor, menuItems()); }
+function menuItems() {
+  return [
     { label: t('Novo projeto'), shortcut: 'Ctrl+N', onClick: () => openNewProjectDialog() },
     { label: t('Abrir projeto...'), shortcut: 'Ctrl+O', onClick: () => openProject() },
     isDesktop ? { label: t('Projetos recentes'), submenu: recentItems() } : null,
@@ -138,7 +140,7 @@ function mainMenu(anchor) {
     { label: t('Sobre o AsturCut'), onClick: () => openCustomize('about') },
     isDesktop && !isMobile ? '-' : null,
     isDesktop && !isMobile ? { label: t('Sair'), onClick: () => api.close() } : null,
-  ]);
+  ];
 }
 
 function customLayoutItems() {
@@ -182,6 +184,53 @@ function editPoints() {
   return [...pts].sort((x, y) => x - y);
 }
 let labelIdx = 0;
+// ---------- Buscar comando (Ctrl+Shift+P / F1) ----------
+function openPalette() {
+  const items = [];
+  const seen = new Set();
+  const walk = (list, path) => {
+    for (const it of list || []) {
+      if (!it || it === '-' || it.disabled) continue;
+      if (it.submenu) { walk(typeof it.submenu === 'function' ? it.submenu() : it.submenu, (path ? path + ' › ' : '') + it.label); continue; }
+      if (!it.onClick || seen.has(it.label)) continue;
+      seen.add(it.label);
+      items.push({ label: it.label, path, shortcut: it.shortcut || '', run: it.onClick });
+    }
+  };
+  walk(menuItems(), '');
+  for (const [id, desc, keys] of ACTIONS) {
+    const label = t(desc);
+    if (seen.has(label) || !ACTION_FN[id] || id === 'palette') continue;
+    seen.add(label);
+    items.push({ label, path: t('Atalho'), shortcut: (keys || [])[0] || '', run: () => ACTION_FN[id]() });
+  }
+  const norm = (x) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const input = el('input', { class: 'input pal-input', placeholder: t('Digite o que você quer fazer... (ex.: legenda, estabilizar, exportar)') });
+  const listEl = el('div', { class: 'pal-list' });
+  let sel = 0, shown = [];
+  const draw = () => {
+    const q = norm(input.value.trim());
+    const words = q.split(/\s+/).filter(Boolean);
+    shown = items.filter((it) => { const h = norm(it.label + ' ' + it.path); return words.every((w) => h.includes(w)); }).slice(0, 60);
+    sel = Math.min(sel, Math.max(0, shown.length - 1));
+    listEl.innerHTML = '';
+    shown.forEach((it, i) => listEl.append(el('div', { class: 'pal-item' + (i === sel ? ' on' : ''), onmousedown: (e) => { e.preventDefault(); go(i); } },
+      el('span', { class: 'pal-label' }, it.label), it.path ? el('span', { class: 'pal-path muted small' }, it.path) : null, it.shortcut ? el('kbd', {}, it.shortcut) : null)));
+    if (!shown.length) listEl.append(el('div', { class: 'muted small', style: { padding: '12px' } }, t('Nada encontrado')));
+    listEl.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+  };
+  const dlg = modal({ title: t('Buscar comando'), width: 560, body: el('div', { class: 'pal' }, input, listEl), actions: [] });
+  const go = (i) => { const it = shown[i]; if (!it) return; dlg.close(); setTimeout(() => it.run(), 30); };
+  input.addEventListener('input', () => { sel = 0; draw(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(shown.length - 1, sel + 1); draw(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(0, sel - 1); draw(); }
+    else if (e.key === 'Enter') { e.preventDefault(); go(sel); }
+  });
+  draw();
+  setTimeout(() => input.focus(), 30);
+}
+
 const ACTION_FN = {
   play: () => togglePlay(),
   frameBack: () => step(-1),
@@ -211,6 +260,7 @@ const ACTION_FN = {
   freeze: () => freezeFrame(),
   history: () => openHistory(),
   exportFrame: () => exportFrame(),
+  palette: () => openPalette(),
   shuttleJ: () => shuttleJ(),
   shuttleK: () => shuttleK(),
   shuttleL: () => shuttleL(),

@@ -63,9 +63,16 @@ Para atualizar, é só abrir o instalador novo. Ele instala por cima e mantém s
 1. Mude a versão em `package.json` (por exemplo, `1.3.0`), faça o commit e envie.
 2. No GitHub, abra **Actions → Gerar instalador → Run workflow**, deixe marcado **"Publicar uma Release"** e clique em **Run workflow**.
 
-Em poucos minutos sai a **Release** `v1.7.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.7.0` também funciona.
+Em poucos minutos sai a **Release** `v1.8.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.8.0` também funciona.
 
 ## Recursos
+
+**Novidades da 1.8**
+- **Seguir objeto**: um texto, sticker ou imagem acompanha algo que se move no vídeo (rastreamento de movimento)
+- **Buscar comando** (F1 ou Ctrl+Shift+P): digite o que quer fazer — "legenda", "estabilizar", "exportar"...
+- **Meus looks**: salve cor + filtro + efeitos e aplique em outros clipes e projetos
+- No celular: editar pelo texto, tela dividida, batidas, normalizar volume, fechar espaços, salvar quadro, ajuste automático e seguir objeto
+- Android salva imagens em Fotos e legendas/XML em Downloads/AsturCut
 
 **Novidades da 1.7**
 - **Editar pelo texto** (como no Premiere): a fala vira texto; apague palavras e o vídeo é cortado junto, marque vícios de linguagem (é, ãh, tipo) e corte pausas longas
