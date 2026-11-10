@@ -63,9 +63,13 @@ Para atualizar, é só abrir o instalador novo. Ele instala por cima e mantém s
 1. Mude a versão em `package.json` (por exemplo, `1.3.0`), faça o commit e envie.
 2. No GitHub, abra **Actions → Gerar instalador → Run workflow**, deixe marcado **"Publicar uma Release"** e clique em **Run workflow**.
 
-Em poucos minutos sai a **Release** `v1.8.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.8.0` também funciona.
+Em poucos minutos sai a **Release** `v1.9.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.9.0` também funciona.
 
 ## Recursos
+
+**Novidades da 1.9**
+- **Reduzir ruído**: tira chiado, zumbido de ventilador/ar-condicionado e ruído de fundo da voz (gera um áudio limpo, o original não muda) — no PC e no celular
+- **Linha do tempo de keyframes** no painel: veja todos os keyframes do clipe, arraste para mudar o tempo, clique para ir até ele
 
 **Novidades da 1.8**
 - **Seguir objeto**: um texto, sticker ou imagem acompanha algo que se move no vídeo (rastreamento de movimento)
