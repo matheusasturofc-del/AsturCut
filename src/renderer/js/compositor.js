@@ -1,7 +1,7 @@
 // Compositor: desenha um quadro do projeto em um canvas (prévia e exportação)
 import { store } from './store.js';
 import { clamp } from './util.js';
-import { getPlayer, imageFor } from './media.js';
+import { getPlayer, imageFor, playerKey } from './media.js';
 import { EFFECT_MAP, applyAdjustPost, tint } from './lib/effects.js';
 import { FILTER_MAP, filterCss } from './lib/filters.js';
 import { TRANSITION_MAP } from './lib/transitions.js';
@@ -253,7 +253,7 @@ function contentSize(clip, W, H, S, ctx) {
 function mediaSource(clip, lt) {
   if (clip.type === 'image') return imageFor(clip.mediaId, Math.max(0, lt) * (clip.speed || 1));
   if (clip.type === 'video') {
-    const p = getPlayer(clip, CUR.prefix + clip.id);
+    const p = getPlayer(clip, CUR.prefix ? CUR.prefix + clip.id : playerKey(clip));
     if (!p || p.el.readyState < 2) return null;
     return p.el;
   }

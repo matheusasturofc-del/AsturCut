@@ -232,6 +232,8 @@ class Store {
   }
   deleteClips(ids = [...this.selection]) {
     if (!ids.length) return;
+    const main = this.mainTrack();
+    if (settings.get('magnet') && main && ids.some((id) => this.clip(id)?.trackId === main.id)) return this.rippleDelete(ids);
     this.begin();
     this.project.clips = this.project.clips.filter((c) => !ids.includes(c.id));
     ids.forEach((id) => this.selection.delete(id));
@@ -240,7 +242,8 @@ class Store {
     bus.emit('selection');
   }
   splitAt(t = this.time, ids = null) {
-    let targets = ids ? ids.map((id) => this.clip(id)) : this.selectedClips();
+    let targets = ids ? ids.map((id) => this.clip(id)).filter(Boolean) : this.selectedClips();
+    if (targets.length) targets = this.withLinked(targets.map((c) => c.id)).map((id) => this.clip(id)).filter((c) => c && !this.track(c.trackId)?.locked);
     if (!targets.length) targets = this.project.clips.filter((c) => !this.track(c.trackId)?.locked);
     targets = targets.filter((c) => c && t > c.start + 0.02 && t < c.start + c.duration - 0.02);
     if (!targets.length) return [];
@@ -267,24 +270,44 @@ class Store {
     return created;
   }
   deleteLeft(t = this.time) {
-    const created = this.splitAt(t);
-    const sel = this.selectedClips().length ? this.selectedClips() : null;
+    const sel = this.selectedClips().length ? this.withLinked([...this.selection]) : null;
     this.begin();
-    const affected = (sel || this.project.clips).filter((c) => c.start + c.duration <= t + 1e-3 && c.start + c.duration >= t - 1e-3);
-    const ids = affected.map((c) => c.id);
-    this.project.clips = this.project.clips.filter((c) => !ids.includes(c.id));
+    this._batching = true;
+    let created = [];
+    try { created = this.splitAt(t, sel); } finally { this._batching = false; }
+    const pool = sel ? [...sel.map((id) => this.clip(id)), ...created].filter(Boolean) : this.project.clips;
+    const affected = pool.filter((c) => c.start + c.duration <= t + 1e-3 && c.start + c.duration >= t - 1e-3 && !this.track(c.trackId)?.locked);
+    if (affected.length) {
+      const a = Math.min(...affected.map((c) => c.start));
+      const tracks = new Set(affected.map((c) => c.trackId));
+      const ids = new Set(affected.map((c) => c.id));
+      this.project.clips = this.project.clips.filter((c) => !ids.has(c.id));
+      this.rippleShift(a, t, tracks);
+      this.time = a;
+    }
     this.selection.clear();
-    created.forEach((c) => this.selection.add(c.id));
+    created.forEach((c) => { if (this.clip(c.id)) this.selection.add(c.id); });
+    this.removeEmptyTracks();
     this.commit('deleteLeft');
+    bus.emit('time', this.time);
     bus.emit('selection');
   }
   deleteRight(t = this.time) {
-    const sel = this.selectedClips().map((c) => c.id);
-    const created = this.splitAt(t);
+    const sel = this.selectedClips().length ? this.withLinked([...this.selection]) : null;
     this.begin();
-    const ids = created.map((c) => c.id);
-    this.project.clips = this.project.clips.filter((c) => !ids.includes(c.id));
-    this.selection = new Set(sel.filter((id) => this.clip(id)));
+    this._batching = true;
+    let created = [];
+    try { created = this.splitAt(t, sel); } finally { this._batching = false; }
+    const right = created.length ? created : (sel ? sel.map((id) => this.clip(id)).filter((c) => c && Math.abs(c.start - t) < 1e-3) : []);
+    if (right.length) {
+      const b = Math.max(...right.map((c) => c.start + c.duration));
+      const tracks = new Set(right.map((c) => c.trackId));
+      const ids = new Set(right.map((c) => c.id));
+      this.project.clips = this.project.clips.filter((c) => !ids.has(c.id));
+      this.rippleShift(t, b, tracks);
+    }
+    this.selection = new Set((sel || []).filter((id) => this.clip(id)));
+    this.removeEmptyTracks();
     this.commit('deleteRight');
     bus.emit('selection');
   }
@@ -361,20 +384,49 @@ class Store {
     for (const id of ids) for (const x of this.linked(this.clip(id))) delete x.linkId;
     this.commit('unlink');
   }
-  // exclusão com ripple: remove e puxa os clipes seguintes da mesma trilha
+  // exclusão com ripple: remove (com o áudio/vídeo vinculado) e puxa para trás o que vem depois, em todas as trilhas
   rippleDelete(ids = [...this.selection]) {
-    const clips = ids.map((id) => this.clip(id)).filter(Boolean).sort((a, b) => b.start - a.start);
-    if (!clips.length) return;
+    const all = this.withLinked(ids).map((id) => this.clip(id)).filter(Boolean);
+    if (!all.length) return;
     this.begin();
-    for (const c of clips) {
-      const end = c.start + c.duration;
-      this.project.clips = this.project.clips.filter((x) => x !== c);
-      for (const x of this.project.clips) if (x.trackId === c.trackId && x.start >= end - 1e-4) x.start -= c.duration;
+    const tracks = new Set(all.map((c) => c.trackId));
+    // intervalos removidos (unidos), do fim para o começo
+    const ranges = [];
+    for (const c of [...all].sort((p, q) => p.start - q.start)) {
+      const last = ranges[ranges.length - 1];
+      if (last && c.start <= last[1] + 1e-4) last[1] = Math.max(last[1], c.start + c.duration);
+      else ranges.push([c.start, c.start + c.duration]);
     }
+    const gone = new Set(all.map((c) => c.id));
+    this.project.clips = this.project.clips.filter((c) => !gone.has(c.id));
+    for (const [a, b] of ranges.reverse()) this.rippleShift(a, b, tracks);
     ids.forEach((id) => this.selection.delete(id));
+    for (const id of gone) this.selection.delete(id);
     this.removeEmptyTracks();
     this.commit('ripple');
     bus.emit('selection');
+  }
+  // fecha o intervalo [a, b]: tudo que começa depois de b anda (b - a) para trás.
+  // Trilhas que perderam clipes andam sempre; nas outras, legendas dentro do trecho são cortadas junto,
+  // e trilhas com algo atravessando o trecho (ex.: música de fundo) ficam como estão para não sobrepor.
+  rippleShift(a, b, tracks = new Set()) {
+    const d = b - a;
+    if (d <= 1e-4) return;
+    for (const tr of this.project.tracks) {
+      if (tr.locked) continue;
+      const list = this.project.clips.filter((c) => c.trackId === tr.id);
+      if (!tracks.has(tr.id)) {
+        if (tr.captions) {
+          for (const c of list) {
+            const e = c.start + c.duration;
+            if (c.start >= a - 1e-4 && e <= b + 1e-4) { this.project.clips = this.project.clips.filter((x) => x !== c); continue; }
+            if (c.start < a && e > a) c.duration = Math.max(0.05, Math.min(e, b) === e ? a - c.start : c.duration - d);
+            else if (c.start < b && e > b) { c.duration = e - b; c.start = b; }
+          }
+        } else if (list.some((c) => c.start < b - 1e-4 && c.start + c.duration > a + 1e-4)) continue;
+      }
+      for (const c of this.project.clips) if (c.trackId === tr.id && c.start >= b - 1e-4) c.start = Math.max(0, c.start - d);
+    }
   }
   // espaço vazio em uma trilha no tempo t
   gapAt(trackId, t) {
@@ -413,7 +465,14 @@ class Store {
     const main = this.mainTrack();
     if (!main) return;
     let t = 0;
-    for (const c of this.clipsOn(main.id)) { c.start = t; t += c.duration; }
+    for (const c of this.clipsOn(main.id)) {
+      const d = t - c.start;
+      if (Math.abs(d) > 1e-6) {
+        for (const x of this.linked(c)) if (x !== c && x.trackId !== main.id) x.start = Math.max(0, x.start + d);
+        c.start = t;
+      }
+      t += c.duration;
+    }
   }
   addMarker(t = this.time) {
     this.begin();

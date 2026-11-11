@@ -321,6 +321,25 @@ export function getPlayer(clip, key = clip.id) {
   pool.set(key, p);
   return p;
 }
+// pedaços cortados em sequência do mesmo arquivo usam o MESMO player: o som passa pelo corte sem emenda
+const keyCache = new Map();
+bus.on('change', () => keyCache.clear());
+export function playerKey(c) {
+  if (!c || String(c.id).includes('>')) return c?.id;
+  const hit = keyCache.get(c.id);
+  if (hit) return hit;
+  let key = c.id;
+  if (!c.transitionIn && !c.freeze && !(c.kf && c.kf.speed)) {
+    const spd = c.speed || 1;
+    const p = store.p.clips.find((x) => x !== c && x.trackId === c.trackId && x.type === c.type && x.mediaId === c.mediaId
+      && Math.abs(x.start + x.duration - c.start) < 0.002 && !x.freeze && !(x.kf && x.kf.speed) && (x.speed || 1) === spd
+      && Math.abs((x.in || 0) + x.duration * spd - (c.in || 0)) < 0.02
+      && (x.voice?.id || '') === (c.voice?.id || '') && !!x.changePitch === !!c.changePitch);
+    if (p) key = playerKey(p);
+  }
+  keyCache.set(c.id, key);
+  return key;
+}
 export function releasePlayer(id) {
   const p = pool.get(id);
   if (!p) return;

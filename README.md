@@ -63,9 +63,14 @@ Para atualizar, é só abrir o instalador novo. Ele instala por cima e mantém s
 1. Mude a versão em `package.json` (por exemplo, `1.3.0`), faça o commit e envie.
 2. No GitHub, abra **Actions → Gerar instalador → Run workflow**, deixe marcado **"Publicar uma Release"** e clique em **Run workflow**.
 
-Em poucos minutos sai a **Release** `v1.9.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.9.0` também funciona.
+Em poucos minutos sai a **Release** `v1.9.1` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.9.1` também funciona.
 
 ## Recursos
+
+**Correções da 1.9.1 — áudio sempre no lugar certo**
+- Cortar um vídeo agora corta junto o áudio vinculado (áudio separado), mesmo com só o vídeo selecionado
+- Excluir e fechar o espaço (ripple), Q/W e o ímã da trilha principal movem todas as faixas juntas: áudio separado, legendas e sobreposições acompanham o vídeo (a música de fundo continua inteira)
+- Passar por um corte não dá mais pulo nem falha no som: os pedaços do mesmo arquivo tocam no mesmo player, sem emenda
 
 **Novidades da 1.9**
 - **Reduzir ruído**: tira chiado, zumbido de ventilador/ar-condicionado e ruído de fundo da voz (gera um áudio limpo, o original não muda) — no PC e no celular

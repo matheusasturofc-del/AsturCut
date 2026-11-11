@@ -5,7 +5,7 @@ import { store } from './store.js';
 import { clamp } from './util.js';
 import { renderFrame } from './compositor.js';
 import { player, syncMedia } from './player.js';
-import { allPlayers, masterGain, mediaUrl, api } from './media.js';
+import { allPlayers, masterGain, mediaUrl, api, playerKey } from './media.js';
 import { valueAt, hasKf, speedAt, srcOffset } from './keyframes.js';
 import { trackAudio, GATE_URL } from './audiomix.js';
 import { mediaClipsDeep } from './sequences.js';
@@ -150,7 +150,7 @@ function avcCodec(W, H) {
 function videoClock(t) {
   for (const c of store.p.clips) {
     if (c.type !== 'video' || c.freeze || hasKf(c, 'speed') || t < c.start || t >= c.start + c.duration) continue;
-    const p = allPlayers().get(c.id);
+    const p = allPlayers().get(playerKey(c));
     if (!p || p.el.paused || p.seeking || p.el.readyState < 2) continue;
     return c.start + (p.el.currentTime - (c.in || 0)) / (c.speed || 1);
   }

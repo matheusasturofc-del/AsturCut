@@ -2,7 +2,7 @@
 import { store, bus, ASPECTS } from './store.js';
 import { $, el, icon, fmtTime, clamp, dragHandler, dropdownFrom, toast } from './util.js';
 import { renderFrame, activeAt, sourceTime, hasMedia } from './compositor.js';
-import { getPlayer, allPlayers, gcPlayers, audioCtx, setPlayerVoice } from './media.js';
+import { getPlayer, allPlayers, gcPlayers, audioCtx, setPlayerVoice, playerKey } from './media.js';
 import { flattenSeqClip, mediaClipsDeep } from './sequences.js';
 import { settings } from './settings.js';
 import { valueAt, setValue, transformAt, localTime, speedAt } from './keyframes.js';
@@ -186,9 +186,10 @@ export function syncMedia(t, playing) {
   const act = activeAt(t);
   const activeIds = new Set();
   const one = (c, tr) => {
-    const p = getPlayer(c, c.id);
+    const key = playerKey(c);
+    const p = getPlayer(c, key);
     if (!p) return;
-    activeIds.add(c.id);
+    activeIds.add(key);
     routePlayer(p, c.trackId);
     if ((p.voiceId || '') !== (c.voice?.id || '')) setPlayerVoice(p, c.voice?.id);
     const lt = t - c.start;
@@ -228,10 +229,11 @@ export function syncMedia(t, playing) {
   // pré-carrega clipes que vão começar em breve
   if (playing) {
     for (const c of mediaClipsDeep()) {
-      if (activeIds.has(c.id)) continue;
+      const key = playerKey(c);
+      if (activeIds.has(key)) continue; // continuação do mesmo arquivo: já está tocando, não mexe
       const dt = c.start - t;
       if (dt > 0 && dt < 1.5) {
-        const p = getPlayer(c, c.id);
+        const p = getPlayer(c, key);
         if (p && p.el.paused && Math.abs(p.el.currentTime - c.in) > 0.1 && !p.seeking) { p.seeking = true; p.el.currentTime = sourceTime(c, 0); }
       }
     }

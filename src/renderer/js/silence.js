@@ -114,9 +114,8 @@ export function apply(groups, rangesByGroup, ripple, label = 'silences') {
       parts = next;
       count++;
       if (ripple) {
-        const len = b - a;
-        removed += len;
-        for (const c of store.p.clips) if (tracks.has(c.trackId) && c.start >= b - 1e-4) c.start -= len;
+        removed += b - a;
+        store.rippleShift(a, b, tracks); // todas as trilhas andam juntas (legendas, sobreposições, áudio separado)
       }
     }
   }
