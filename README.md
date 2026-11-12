@@ -63,9 +63,14 @@ Para atualizar, é só abrir o instalador novo. Ele instala por cima e mantém s
 1. Mude a versão em `package.json` (por exemplo, `1.3.0`), faça o commit e envie.
 2. No GitHub, abra **Actions → Gerar instalador → Run workflow**, deixe marcado **"Publicar uma Release"** e clique em **Run workflow**.
 
-Em poucos minutos sai a **Release** `v1.9.1` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.9.1` também funciona.
+Em poucos minutos sai a **Release** `v1.9.2` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.9.2` também funciona.
 
 ## Recursos
+
+**Correções da 1.9.2 — áudio exato na prévia**
+- Novo motor de áudio: o som dos clipes toca direto do áudio decodificado, no ponto exato. Voltar um pouco, pular ou passar por um corte não toca mais um pedaço errado nem repete trecho (problema que acontecia principalmente com MP3, OGG e M4A)
+- O relógio da reprodução segue o relógio do som, então imagem e áudio não se separam com o tempo
+- Clipes acelerados/desacelerados mantêm o tom da voz também no vídeo exportado (antes saía com voz fina/grossa)
 
 **Correções da 1.9.1 — áudio sempre no lugar certo**
 - Cortar um vídeo agora corta junto o áudio vinculado (áudio separado), mesmo com só o vídeo selecionado

@@ -93,7 +93,15 @@ export async function renderAudioOffline(start, dur, onProgress, { sampleRate = 
     src.playbackRate.value = ramp ? speedAt(c, t0 - c.start) : spd;
     const g = ctx.createGain();
     const vc = c.voice?.id ? buildVoice(ctx, c.voice.id, pitchOk) : null;
-    if (vc) { src.connect(vc.input); vc.output.connect(g); } else src.connect(g);
+    // velocidade mudada sem "alterar tom": corrige o tom (como na prévia)
+    let head = src;
+    let pn = null;
+    if (pitchOk && !c.changePitch && (ramp || Math.abs(spd - 1) > 1e-3)) {
+      pn = new AudioWorkletNode(ctx, 'astur-pitch', { outputChannelCount: [2] });
+      pn.parameters.get('ratio').value = clamp(1 / (ramp ? speedAt(c, t0 - c.start) : spd), 0.25, 4);
+      src.connect(pn); head = pn;
+    }
+    if (vc) { head.connect(vc.input); vc.output.connect(g); } else head.connect(g);
     g.connect(buses.get(tr.id).input);
     const when = t0 - start;
     const srcOff = (c.in || 0) + srcOffset(c, t0 - c.start);
@@ -104,6 +112,7 @@ export async function renderAudioOffline(start, dur, onProgress, { sampleRate = 
       const n = Math.max(2, Math.ceil((t1 - t0) * 50)), rc = new Float32Array(n);
       for (let k = 0; k < n; k++) rc[k] = speedAt(c, (t0 - c.start) + (k / (n - 1)) * (t1 - t0));
       try { src.playbackRate.setValueCurveAtTime(rc, when, Math.max(0.01, t1 - t0)); } catch {}
+      if (pn) { const inv = rc.map((v) => clamp(1 / v, 0.25, 4)); try { pn.parameters.get('ratio').setValueCurveAtTime(inv, when, Math.max(0.01, t1 - t0)); } catch {} }
     }
     // volume (keyframes + fades) amostrado a cada 20 ms
     const steps = Math.max(2, Math.ceil((t1 - t0) * 50));

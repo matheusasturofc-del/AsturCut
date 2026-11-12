@@ -575,3 +575,13 @@ export async function collectFiles() {
     return r;
   } finally { tst.remove(); }
 }
+// cadeia de efeito de voz para o motor de áudio (null enquanto o worklet de tom carrega)
+export function makeVoiceChain(id) {
+  if (!id || !VOICE_MAP[id]) return null;
+  if (VOICE_MAP[id].pitch && !pitchOk) { ensurePitch(); return 'wait'; }
+  return buildVoice(audioCtx(), id, pitchOk);
+}
+export function makePitchNode() {
+  if (!pitchOk) { ensurePitch(); return 'wait'; }
+  return new AudioWorkletNode(audioCtx(), 'astur-pitch', { outputChannelCount: [2] });
+}

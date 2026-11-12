@@ -4,6 +4,7 @@ import { $, el, icon, fmtTime, clamp, dragHandler, dropdownFrom, toast } from '.
 import { renderFrame, activeAt, sourceTime, hasMedia } from './compositor.js';
 import { getPlayer, allPlayers, gcPlayers, audioCtx, setPlayerVoice, playerKey } from './media.js';
 import { flattenSeqClip, mediaClipsDeep } from './sequences.js';
+import { audioBuffer, playAt, endFrame, stopAll } from './audioplay.js';
 import { settings } from './settings.js';
 import { valueAt, setValue, transformAt, localTime, speedAt } from './keyframes.js';
 import { routePlayer } from './audiomix.js';
@@ -19,7 +20,7 @@ export const player = {
   onExportFrame: null,
 };
 
-let lastTs = 0;
+let lastTs = 0, lastA = null;
 let rangeEnd = null;
 
 export function initPlayer() {
@@ -150,7 +151,7 @@ export function play(fromStart = false, until = null) {
   if (fromStart || store.time >= dur - 0.01) store.setTime(0);
   rangeEnd = until;
   player.playing = true;
-  lastTs = performance.now();
+  lastTs = performance.now(); lastA = null;
   updatePlayBtn();
   bus.emit('play-state', true);
 }
@@ -158,6 +159,7 @@ export function pause() {
   if (!player.playing) return;
   player.playing = false;
   player.shuttle = 1; player.rateMul = 1;
+  stopAll();
   for (const p of allPlayers().values()) p.el.pause();
   updatePlayBtn();
   player.needsRender = true;
@@ -170,7 +172,7 @@ function shuttleTo(v) {
   if (!player.playing) {
     audioCtx();
     if (v > 0 && store.time >= store.duration() - 0.01) store.setTime(0);
-    rangeEnd = null; player.playing = true; lastTs = performance.now(); updatePlayBtn(); bus.emit('play-state', true);
+    rangeEnd = null; player.playing = true; lastTs = performance.now(); lastA = null; updatePlayBtn(); bus.emit('play-state', true);
   }
   for (const p of allPlayers().values()) if (v < 0 && !p.el.paused) p.el.pause();
   if (Math.abs(v) !== 1) toast((v < 0 ? '◀◀ ' : '▶▶ ') + Math.abs(v) + 'x', 'info', 700);
@@ -186,26 +188,37 @@ export function syncMedia(t, playing) {
   const act = activeAt(t);
   const activeIds = new Set();
   const one = (c, tr) => {
-    const key = playerKey(c);
-    const p = getPlayer(c, key);
-    if (!p) return;
-    activeIds.add(key);
-    routePlayer(p, c.trackId);
-    if ((p.voiceId || '') !== (c.voice?.id || '')) setPlayerVoice(p, c.voice?.id);
     const lt = t - c.start;
-    const target = sourceTime(c, lt);
-    const el = p.el;
+    const inRange = lt >= 0 && lt < c.duration;
     // volume com fade
     let vol = valueAt(c, 'volume', clamp(lt, 0, c.duration));
     if (c.fadeIn > 0) vol *= clamp(lt / c.fadeIn, 0, 1);
     if (c.fadeOut > 0) vol *= clamp((c.duration - lt) / c.fadeOut, 0, 1);
     if (lt < 0 || lt > c.duration) vol = 0;
     if (tr.muted) vol = 0;
-    if (p.gain) p.gain.gain.value = vol; else el.volume = clamp(vol, 0, 1);
     const rate = clamp(speedAt(c, clamp(lt, 0, c.duration)) * (player.rateMul || 1), 0.0625, 16);
+    const target = sourceTime(c, lt);
+    // som pelo motor de áudio (exato); o player do navegador fica só para a imagem
+    const audible = c.type === 'audio' || (c.type === 'video' && !c.audioDetached);
+    let engine = false;
+    if (audible) {
+      const buf = audioBuffer(store.media(c.mediaId)); // também já começa a decodificar
+      const fastExport = player.exporting && (player.rateMul || 1) !== 1;
+      if (buf && playing && inRange && !c.freeze && !fastExport && vol > 0) engine = playAt('a:' + playerKey(c), buf, target, rate, vol, c.trackId, c.voice?.id, !c.changePitch) !== false;
+      else if (buf && !fastExport && !c.freeze && (!playing || vol <= 0)) engine = true; // pausado/mudo: nada a tocar
+    }
+    if (engine && c.type === 'audio') return; // áudio puro: não precisa do player do navegador
+    const key = playerKey(c);
+    const p = getPlayer(c, key);
+    if (!p) return;
+    activeIds.add(key);
+    routePlayer(p, c.trackId);
+    if (!engine && (p.voiceId || '') !== (c.voice?.id || '')) setPlayerVoice(p, c.voice?.id);
+    const el = p.el;
+    const ev = engine ? 0 : vol;
+    if (p.gain) p.gain.gain.value = ev; else el.volume = clamp(ev, 0, 1);
     if (Math.abs(el.playbackRate - rate) > 0.001) el.playbackRate = rate;
     el.preservesPitch = !c.changePitch;
-    const inRange = lt >= 0 && lt < c.duration;
     if (playing && inRange && !c.freeze) {
       if (el.paused) { if (Math.abs(el.currentTime - target) > 0.05) el.currentTime = target; el.play().catch(() => {}); }
       else if (Math.abs(el.currentTime - target) > 0.3 * (player.rateMul || 1)) el.currentTime = target;
@@ -225,6 +238,7 @@ export function syncMedia(t, playing) {
       if (hasMedia(c)) one(c, tr);
     }
   }
+  endFrame();
   for (const [id, p] of allPlayers()) if (!activeIds.has(id) && !p.el.paused) p.el.pause();
   // pré-carrega clipes que vão começar em breve
   if (playing) {
@@ -244,8 +258,10 @@ function loop(ts) {
   requestAnimationFrame(loop);
   if (player.exporting) return;
   if (player.playing) {
-    const dt = (ts - lastTs) / 1000;
+    let dt = (ts - lastTs) / 1000;
     lastTs = ts;
+    const ac = audioCtx();
+    if (ac.state === 'running') { const now = ac.currentTime; if (lastA != null && now >= lastA) dt = now - lastA; lastA = now; } else lastA = null;
     const sh = player.shuttle || 1;
     let t = store.time + Math.min(dt, 0.1) * sh;
     if (sh < 0) {
