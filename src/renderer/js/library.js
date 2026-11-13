@@ -4,6 +4,7 @@ import { t } from './i18n.js';
 import { $, el, icon, fmtShort, fmtBytes, contextMenu, toast, ease, promptDialog } from './util.js';
 import { openSource } from './source.js';
 import { removeProxy, replaceMedia } from './media.js';
+import { removeBackground } from './bgremove.js';
 import { createProxiesDialog } from './protools.js';
 import { runtime, importViaDialog, importDropped, BACKGROUNDS, addBackground, drawBackground, importFonts, customFonts, isDesktop, api } from './media.js';
 import { settings } from './settings.js';
@@ -250,6 +251,7 @@ function renderMedia() {
       isDesktop && !api.isMobile && m.type === 'video' && m.path ? (m.proxy ? { label: 'Remover proxy', onClick: () => removeProxy(m) } : { label: 'Criar proxy (edição leve)', onClick: () => createProxiesDialog([m]) }) : null,
       isDesktop && !api.isMobile && m.path ? { label: 'Mostrar na pasta', onClick: () => api.showItem(m.path) } : null,
       isDesktop && !api.isMobile && !m.gen && !m.genImg ? { label: m.missing ? 'Reconectar arquivo...' : 'Substituir mídia...', onClick: () => replaceMedia(m) } : null,
+      m.type === 'image' && !m.alpha && !m.genImg ? { label: 'Remover fundo com IA', onClick: () => removeBackground(m) } : null,
       '-',
       { label: t('Informações: {info}', { info: `${m.width ? m.width + '×' + m.height + ' · ' : ''}${fmtBytes(m.size)}` }), disabled: true },
       { label: 'Remover do projeto', onClick: () => { store.begin(); store.p.clips = store.p.clips.filter((c) => c.mediaId !== m.id); store.p.media = store.p.media.filter((x) => x !== m); store.commit('rmmedia'); bus.emit('media'); } },
@@ -273,8 +275,8 @@ function renderMedia() {
     }
     const thumb = rt.thumb ? el('img', { src: rt.thumb, draggable: 'false' }) : el('div', { class: 'tile-ph', html: icon(m.type === 'audio' ? 'music' : m.type === 'image' ? 'image' : 'video', 26) });
     grid.append(tile({
-      title: m.name, thumb, cls: (m.missing ? 'missing' : '') + ' no-tr-name',
-      badge: m.type === 'image' ? null : fmtShort(m.duration),
+      title: m.name, thumb, cls: (m.missing ? 'missing' : '') + (m.alpha ? ' alpha' : '') + ' no-tr-name',
+      badge: m.type === 'image' ? (m.alpha ? t('Sem fundo') : null) : fmtShort(m.duration),
       extra: [used ? el('span', { class: 'tile-used', title: 'Em uso' }, '✓') : null, srcBtn],
       onAdd: () => addMedia(m),
       drag: { kind: 'media', id: m.id },

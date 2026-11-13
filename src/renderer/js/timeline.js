@@ -14,6 +14,7 @@ import { openRecorder } from './recorder.js';
 import { stabilize, trackObject } from './analysis.js';
 import { textEditDialog } from './textedit.js';
 import { denoiseDialog } from './denoise.js';
+import { removeBackground } from './bgremove.js';
 import { closeAllGaps, ttsDialog, editMarker, markerAt, reverseClip, colorMatchSelected, splitLayoutDialog, beatsDialog, normalizeDialog } from './extras.js';
 import { multicamDialog, openMulticamMonitor, isMulticamSeq } from './multicam.js';
 import { sequences, switchSequence, newSequence, renameSequence, duplicateSequence, deleteSequence, nestSelection, seqDuration, insertSequenceClip, seqData, angleTracks } from './sequences.js';
@@ -340,7 +341,7 @@ function clipLabel(c) {
 function renderClip(c, tr, h) {
   const w = Math.max(2, c.duration * pps);
   const sel = store.selection.has(c.id);
-  const node = el('div', { class: `tl-clip ${c.type}${sel ? ' selected' : ''}${c.label ? ' labeled' : ''}${c.linkId ? ' linked' : ''}`, style: { left: (c.start * pps) + 'px', width: w + 'px', ...(c.label ? { '--label': c.label } : {}) }, dataset: { clip: c.id } });
+  const node = el('div', { class: `tl-clip ${c.type}${c.type === 'image' && store.media(c.mediaId)?.alpha ? ' alpha' : ''}${sel ? ' selected' : ''}${c.label ? ' labeled' : ''}${c.linkId ? ' linked' : ''}`, style: { left: (c.start * pps) + 'px', width: w + 'px', ...(c.label ? { '--label': c.label } : {}) }, dataset: { clip: c.id } });
   const m = c.mediaId ? store.media(c.mediaId) : null;
   const rt = m ? runtime.get(m.id) : null;
   if ((c.type === 'video' || c.type === 'image') && settings.get('showThumbs')) {
@@ -483,6 +484,7 @@ export function clipMenu(x, y, c) {
     c.type === 'video' ? { label: 'Detectar cenas e cortar...', onClick: () => detectScenes(c) } : null,
     c.type === 'video' ? { label: 'Estabilizar vídeo', onClick: () => stabilize(c) } : null,
     ['text', 'sticker', 'shape', 'image'].includes(c.type) ? { label: 'Seguir objeto no vídeo (rastrear)', onClick: () => trackObject(c) } : null,
+    c.type === 'image' && !store.media(c.mediaId)?.alpha ? { label: 'Remover fundo com IA', onClick: () => removeBackground(store.media(c.mediaId), c) } : null,
     c.type === 'video' ? { label: 'Inverter (de trás para frente)', shortcut: 'Ctrl+Alt+R', onClick: () => reverseClip(c) } : null,
     multi && isVis ? { label: 'Igualar cor (do primeiro selecionado)', onClick: () => colorMatchSelected() } : null,
     multi && isVis ? { label: 'Tela dividida...', onClick: () => splitLayoutDialog() } : null,

@@ -197,7 +197,8 @@ async function probe(m) {
   if (m.type === 'image') {
     m.width = elm.naturalWidth || 1000; m.height = elm.naturalHeight || 1000; m.duration = 0;
     r.img = elm;
-    r.thumb = thumbFrom(elm, m.width, m.height);
+    m.alpha = hasTransparency(elm, m);
+    r.thumb = thumbFrom(elm, m.width, m.height, 160, m.alpha);
     if (/^(gif|webp|apng|png)$/i.test(m.ext || '') && typeof ImageDecoder !== 'undefined') {
       try { const g = await decodeAnimated(m); if (g) { r.gif = g; m.animated = true; m.animDur = +g.total.toFixed(3); } } catch (e) { console.warn('gif', e); }
     }
@@ -210,13 +211,26 @@ async function probe(m) {
   runtime.set(m.id, r);
 }
 
-function thumbFrom(src, w, h, tw = 160) {
+function thumbFrom(src, w, h, tw = 160, alpha = false) {
   const th = Math.round(tw * (h / w)) || 90;
   const c = document.createElement('canvas');
   c.width = tw; c.height = Math.min(th, 240);
   const x = c.getContext('2d');
   x.drawImage(src, 0, 0, c.width, c.height);
-  try { return c.toDataURL('image/jpeg', 0.75); } catch { return null; }
+  try { return alpha ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.75); } catch { return null; }
+}
+// a imagem tem fundo transparente? (PNG/WebP/GIF com partes invisíveis)
+export function hasTransparency(img, m) {
+  if (m && !/^(png|webp|gif|apng|avif|svg|ico)$/i.test(m.ext || '')) return false;
+  try {
+    const S = 128, c = document.createElement('canvas'); c.width = S; c.height = S;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0, S, S);
+    const d = x.getImageData(0, 0, S, S).data;
+    let clear = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] < 200) clear++;
+    return clear > S * S * 0.01; // mais de 1% da imagem invisível
+  } catch { return false; }
 }
 
 // fila de análise (quadros do vídeo + forma de onda)

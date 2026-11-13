@@ -63,9 +63,13 @@ Para atualizar, é só abrir o instalador novo. Ele instala por cima e mantém s
 1. Mude a versão em `package.json` (por exemplo, `1.3.0`), faça o commit e envie.
 2. No GitHub, abra **Actions → Gerar instalador → Run workflow**, deixe marcado **"Publicar uma Release"** e clique em **Run workflow**.
 
-Em poucos minutos sai a **Release** `v1.9.2` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.9.2` também funciona.
+Em poucos minutos sai a **Release** `v1.10.0` com o instalador `.exe` (Windows) e os pacotes `.deb` e `.AppImage` (Linux), e todos que têm o AsturCut veem o aviso de atualização. Enviar uma tag `v1.10.0` também funciona.
 
 ## Recursos
+
+**Novidades da 1.10 — remover fundo de fotos com IA**
+- **Remover fundo com IA** em fotos: recorta qualquer objeto (pessoa, produto, animal, carro, comida) e cria uma cópia em PNG sem fundo. Usa o BiRefNet quando há placa de vídeo compatível e o ormbg (leve, ~44 MB) nos outros casos; roda no próprio computador/celular, a internet só é usada para baixar a IA na primeira vez
+- **Reconhece fotos com fundo transparente** (PNG/WebP/GIF): mostram o selo "Sem fundo" com fundo xadrez, entram por cima do vídeo (como um sticker) e o app avisa que não precisa remover o fundo
 
 **Correções da 1.9.2 — áudio exato na prévia**
 - Novo motor de áudio: o som dos clipes toca direto do áudio decodificado, no ponto exato. Voltar um pouco, pular ou passar por um corte não toca mais um pedaço errado nem repete trecho (problema que acontecia principalmente com MP3, OGG e M4A)

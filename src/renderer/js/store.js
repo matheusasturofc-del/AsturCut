@@ -207,7 +207,11 @@ class Store {
     } else if (type === 'video') {
       const main = this.mainTrack();
       const end = this.clipsOn(main.id).reduce((m, c) => Math.max(m, c.start + c.duration), 0);
-      if (at == null) { track = main; start = end; } else { start = at; track = this.findTrackFor('video', start, start + dur, true); }
+      if (media.alpha && at == null && end > 0) {
+        // foto com fundo transparente: entra por cima do vídeo, no cursor (como um sticker)
+        start = Math.min(this.time, Math.max(0, end - 0.1));
+        track = this.findTrackFor('video', start, start + dur, false);
+      } else if (at == null) { track = main; start = end; } else { start = at; track = this.findTrackFor('video', start, start + dur, true); }
     } else {
       start = at ?? this.time;
       track = this.findTrackFor('audio', start, start + dur);

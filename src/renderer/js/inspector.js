@@ -22,6 +22,7 @@ import { stabilize, trackMask, autoReframeDialog, maskPosAt, trackObject, videoU
 import { switchSequence, renameSequence } from './sequences.js';
 import { ttsDialog, autoEnhance } from './extras.js';
 import { denoiseDialog } from './denoise.js';
+import { removeBackground } from './bgremove.js';
 import { VOICES } from './lib/voice.js';
 const tr = (s, v) => t(s, v);
 import { whiteBalanceFrom, applyColorToMedia, copyAttributes, pasteAttributesDialog, hasAttributes, gainDialog, speedDialog, toDb, userLooks, saveLook, applyLook, deleteLook } from './editTools.js';
@@ -365,13 +366,21 @@ function keyingSection(c) {
     el('button', { class: 'btn sm', onclick: () => updC(c, { chroma: { on: true, color: '#00ff00' } }) }, t('Verde')),
     el('button', { class: 'btn sm', onclick: () => updC(c, { chroma: { on: true, color: '#0047ff' } }) }, t('Azul')),
     el('button', { class: 'btn sm', title: t('Clique no conta-gotas e depois no fundo do vídeo'), onclick: pick, html: icon('pipette', 13) + `<span>${t('Pegar cor')}</span>` }));
+  const m = c.type === 'image' ? store.media(c.mediaId) : null;
+  const photo = m ? (m.alpha
+    ? el('div', { class: 'bg-ok' }, '✓ ' + t('Esta foto já tem fundo transparente.'))
+    : el('div', {},
+      el('button', { class: 'btn primary', style: { width: '100%' }, onclick: () => removeBackground(m, c), html: icon('wand', 14) + `<span>${t('Remover fundo com IA')}</span>` }),
+      el('div', { class: 'muted small', style: { marginTop: '6px' } }, t('Funciona com pessoas, produtos, animais, carros, comida... Cria uma cópia em PNG sem fundo (a foto original não muda).')))) : null;
   return section('Remover fundo',
-    toggle('Recortar pessoa (IA)', cu.on, (v) => { updC(c, { cutout: { on: v } }); if (v) ensureSegmenter().then(() => render()).catch(() => { toast(t('Não foi possível carregar a IA de recorte'), 'error'); render(); }); }),
+    photo,
+    c.type === 'video' || cu.on ? toggle('Recortar pessoa (IA)', cu.on, (v) => { updC(c, { cutout: { on: v } }); if (v) ensureSegmenter().then(() => render()).catch(() => { toast(t('Não foi possível carregar a IA de recorte'), 'error'); render(); }); }) : null,
     cu.on && state === 'loading' ? el('div', { class: 'muted small' }, t('Carregando a IA de recorte...')) : null,
     cu.on && state === 'error' ? el('div', { class: 'muted small' }, t('Não foi possível carregar a IA de recorte')) : null,
     cu.on ? slider('Ajuste da borda', Math.round(cu.edge * 100), { min: 10, max: 90, def: 50, onInput: (v) => upd(c, { cutout: { edge: v / 100 } }) }) : null,
     cu.on ? slider('Suavizar borda', Math.round(cu.feather * 100), { min: 1, max: 40, def: 15, onInput: (v) => upd(c, { cutout: { feather: v / 100 } }) }) : null,
     cu.on ? el('div', { class: 'muted small' }, t('Funciona melhor com uma pessoa em primeiro plano. Coloque outro vídeo ou imagem na trilha de baixo para trocar o fundo.')) : null,
+    m && !m.alpha ? el('div', { class: 'muted small', style: { marginTop: '6px' } }, t('Ou, para fundo de uma cor só:')) : null,
     toggle('Chroma key (tela verde/azul)', ch.on, (v) => updC(c, { chroma: { on: v } })),
     ch.on ? row('Cor do fundo:', el('input', { type: 'color', class: 'color', value: ch.color, onchange: (e) => updC(c, { chroma: { color: e.target.value } }) }), el('span', { class: 'muted small mono' }, ch.color)) : null,
     ch.on ? presets : null,
