@@ -37,9 +37,18 @@ export async function checkForUpdates({ manual = false } = {}) {
   return null;
 }
 
+// procura ao abrir, a cada 30 min e quando a janela volta a ficar em foco (no máx. 1 vez a cada 10 min)
+let lastCheck = 0;
+function autoCheck() {
+  if (Date.now() - lastCheck < 10 * 60 * 1000) return;
+  lastCheck = Date.now();
+  checkForUpdates();
+}
 export function startUpdateChecks() {
-  setTimeout(() => checkForUpdates(), 5000);
-  setInterval(() => checkForUpdates(), 6 * 3600 * 1000);
+  setTimeout(autoCheck, 5000);
+  setInterval(autoCheck, 30 * 60 * 1000);
+  window.addEventListener('focus', () => setTimeout(autoCheck, 1500));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoCheck, 1500); });
 }
 
 export function openUpdate(info = latest) {
